@@ -18,7 +18,7 @@ END_YEAR = datetime.now().year
 
 # Establish the Landing Zone folder path
 FOLDER = "../landing-zone/structured/noaa"
-os.makedirs(FOLDER, exist_ok=True)
+# os.makedirs(FOLDER, exist_ok=True)
 
 url = "https://www.ncei.noaa.gov/cdo-web/api/v2/data"
 headers = {"token": TOKEN}

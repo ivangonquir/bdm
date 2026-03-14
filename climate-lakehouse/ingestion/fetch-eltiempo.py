@@ -10,7 +10,7 @@ from landing_zone.minio_client import upload_to_bronze
 # ---------- CONFIG ----------
 CITY = "Barcelona"
 ELTIEMPO_FOLDER = "../landing-zone/unstructured/eltiempo"
-os.makedirs(ELTIEMPO_FOLDER, exist_ok=True)
+# os.makedirs(ELTIEMPO_FOLDER, exist_ok=True)
 
 print(f"Starting ElTiempo.es scraping for {CITY}...")
 

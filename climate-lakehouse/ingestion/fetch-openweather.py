@@ -1,13 +1,10 @@
 import requests
 import json
 import os
+import sys
 from datetime import datetime
 from dotenv import load_dotenv
 from kafka import KafkaProducer
-
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(parent_dir)
-from landing_zone.minio_client import upload_to_bronze
 
 
 # ---------- CONFIG ----------
@@ -16,7 +13,7 @@ OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_KEY")
 
 CITY = "Barcelona"
 OPENWEATHER_FOLDER = "../landing-zone/semi-structured/openweathermap"
-os.makedirs(OPENWEATHER_FOLDER, exist_ok=True)
+# os.makedirs(OPENWEATHER_FOLDER, exist_ok=True)
 
 print(f"Starting OpenWeatherMap collection for {CITY}...")
 
@@ -37,9 +34,11 @@ try:
 
     # --- Save locally ---
     filename_weather = f"{OPENWEATHER_FOLDER}/weather_{timestamp}.json"
+    """
     with open(filename_weather, "w") as f:
         json.dump(data, f, indent=4)
     print(f"[OpenWeatherMap] Saved: {filename_weather}")
+    """
 
     # --- Send to Kafka ---
     producer.send('weather-stream', value=data)
