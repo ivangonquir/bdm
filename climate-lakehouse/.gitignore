@@ -1,0 +1,4 @@
+.env
+.venv/
+landing-zone/
+__pycache__/
