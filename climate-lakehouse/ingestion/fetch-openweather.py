@@ -5,6 +5,11 @@ from datetime import datetime
 from dotenv import load_dotenv
 from kafka import KafkaProducer
 
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(parent_dir)
+from landing_zone.minio_client import upload_to_bronze
+
+
 # ---------- CONFIG ----------
 load_dotenv()
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_KEY")

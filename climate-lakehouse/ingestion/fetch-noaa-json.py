@@ -4,6 +4,11 @@ import json
 import time
 from datetime import datetime
 
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(parent_dir)
+from landing_zone.minio_client import upload_to_bronze
+
+
 # ---------- CONFIG ----------
 TOKEN = os.getenv("NOAA_TOKEN")
 DATASET_ID = "GHCND"
@@ -46,8 +51,16 @@ for year in range(START_YEAR, END_YEAR + 1):
         
         # Check if data exists for this specific year
         if "results" in data:
+            """
             with open(filename, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)
+                json.dump(data, f, indent=4)ç
+            """
+            upload_to_bronze(
+                source_name="NOAA",
+                data_type="structured",
+                format_extension="json",
+                data_content=response.text
+            )
             print(f"  -> Success: Saved {len(data['results'])} records to {filename}")
         else:
             print(f"  -> No data found for {year}.")

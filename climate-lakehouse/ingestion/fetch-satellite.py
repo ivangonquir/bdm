@@ -3,6 +3,11 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(parent_dir)
+from landing_zone.minio_client import upload_to_bronze
+
+
 # ---------- CONFIG ----------
 # Safely load your API key
 load_dotenv()
@@ -32,8 +37,10 @@ try:
         # Save it as a PNG image
         filename = f"{SAT_FOLDER}/spain_temp_{timestamp}.png"
 
+        """
         with open(filename, "wb") as f:
             f.write(response.content)
+        """
 
         print(f"[Satellite] Success! Saved temperature map: {filename}")
 

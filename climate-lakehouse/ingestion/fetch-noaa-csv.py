@@ -4,6 +4,11 @@ import csv
 import time
 from datetime import datetime
 
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(parent_dir)
+from landing_zone.minio_client import upload_to_bronze
+
+
 # ---------- CONFIG ----------
 TOKEN = os.getenv("NOAA_TOKEN")
 DATASET_ID = "GHCND"
@@ -45,6 +50,7 @@ for year in range(START_YEAR, END_YEAR + 1):
         
         if "results" in data:
             # Open the file and write as CSV
+            """
             with open(filename, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 # Write the header row
@@ -59,6 +65,14 @@ for year in range(START_YEAR, END_YEAR + 1):
                         item.get("value"), 
                         item.get("attributes")
                     ])
+            """
+
+            upload_to_bronze(
+                source_name="NOAA",
+                data_type="structured",
+                format_extension="csv",
+                data_content=response.text  # .text is used for strings/text
+            )
             print(f"  -> Success: Saved {len(data['results'])} records to {filename}")
         else:
             print(f"  -> No data found for {year}.")
