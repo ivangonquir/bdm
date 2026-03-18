@@ -2,3 +2,4 @@ requests==2.32.0
 python-dotenv==1.1.1
 kafka-python==2.1.2
 minio
+deltalake
