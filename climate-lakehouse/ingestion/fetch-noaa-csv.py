@@ -1,24 +1,25 @@
 import requests
 import os
 import csv
+import sys
 import time
 from datetime import datetime
+from dotenv import load_dotenv                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
-from landing_zone.minio_client import upload_to_bronze
+from minio_client import upload_to_bronze
 
 
+load_dotenv()
 # ---------- CONFIG ----------
 TOKEN = os.getenv("NOAA_TOKEN")
+print(TOKEN)
 DATASET_ID = "GHCND"
 STATION_ID = "GHCND:SP000008181"  # Barcelona Airport
 START_YEAR = 2000
 END_YEAR = datetime.now().year  
 
-# Establish the Landing Zone folder path
-FOLDER = "../landing-zone/structured/noaa"
-# os.makedirs(FOLDER, exist_ok=True)
 
 url = "https://www.ncei.noaa.gov/cdo-web/api/v2/data"
 headers = {"token": TOKEN}
@@ -29,8 +30,6 @@ for year in range(START_YEAR, END_YEAR + 1):
     start_date = f"{year}-01-01"
     end_date = f"{year}-12-31"
     
-    # Save as CSV now
-    filename = f"{FOLDER}/noaa_bcn_{year}.csv"
     
     params = {
         "datasetid": DATASET_ID,
@@ -49,31 +48,13 @@ for year in range(START_YEAR, END_YEAR + 1):
         data = response.json()
         
         if "results" in data:
-            # Open the file and write as CSV
-            """
-            with open(filename, "w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                # Write the header row
-                writer.writerow(["date", "datatype", "station", "value", "attributes"])
-                
-                # Write the data rows
-                for item in data["results"]:
-                    writer.writerow([
-                        item.get("date"), 
-                        item.get("datatype"), 
-                        item.get("station"), 
-                        item.get("value"), 
-                        item.get("attributes")
-                    ])
-            """
-
             upload_to_bronze(
                 source_name="NOAA",
                 data_type="structured",
                 format_extension="csv",
                 data_content=response.text  # .text is used for strings/text
             )
-            print(f"  -> Success: Saved {len(data['results'])} records to {filename}")
+            print(f"  -> Success: Saved {len(data['results'])} records of NOAA")
         else:
             print(f"  -> No data found for {year}.")
     else:

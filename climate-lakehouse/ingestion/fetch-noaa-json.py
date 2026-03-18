@@ -1,14 +1,17 @@
 import requests
 import os
 import json
+import sys
 import time
+from dotenv import load_dotenv
 from datetime import datetime
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
-from landing_zone.minio_client import upload_to_bronze
+from minio_client import upload_to_bronze
 
 
+load_dotenv()
 # ---------- CONFIG ----------
 TOKEN = os.getenv("NOAA_TOKEN")
 DATASET_ID = "GHCND"
@@ -16,9 +19,6 @@ STATION_ID = "GHCND:SP000008181"  # Barcelona Airport
 START_YEAR = 2000
 END_YEAR = datetime.now().year  # 2026
 
-# Establish the Landing Zone folder path [cite: 200]
-FOLDER = "../landing-zone/structured/noaa"
-# os.makedirs(FOLDER, exist_ok=True)
 
 url = "https://www.ncei.noaa.gov/cdo-web/api/v2/data"
 headers = {"token": TOKEN}
@@ -31,7 +31,7 @@ for year in range(START_YEAR, END_YEAR + 1):
     end_date = f"{year}-12-31"
     
     # Standardized naming convention based on logical properties [cite: 198, 202]
-    filename = f"{FOLDER}/noaa_bcn_{year}.json"
+
     
     params = {
         "datasetid": DATASET_ID,
@@ -51,17 +51,13 @@ for year in range(START_YEAR, END_YEAR + 1):
         
         # Check if data exists for this specific year
         if "results" in data:
-            """
-            with open(filename, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)ç
-            """
             upload_to_bronze(
                 source_name="NOAA",
                 data_type="structured",
                 format_extension="json",
                 data_content=response.text
             )
-            print(f"  -> Success: Saved {len(data['results'])} records to {filename}")
+            print(f"  -> Success: Saved {len(data['results'])} records of NOAA json.")
         else:
             print(f"  -> No data found for {year}.")
     else:

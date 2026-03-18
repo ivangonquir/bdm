@@ -1,4 +1,8 @@
+# --- API Requests & Networking ---
 requests==2.32.0
+# --- Kafka Integration (Next Gen for Python 3.12+ compatibility) ---
+kafka-python-ng==2.2.2
+# --- AWS S3 Client (Used to talk to MinIO) ---
+boto3==1.34.100
+# --- Environment Variables Management ---
 python-dotenv==1.1.1
-kafka-python==2.1.2
-boto3

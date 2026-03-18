@@ -6,7 +6,7 @@ from dotenv import load_dotenv, find_dotenv
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
-from landing_zone.minio_client import upload_to_bronze
+from minio_client import upload_to_bronze
 
 
 # ---------- CONFIG ----------
@@ -16,9 +16,6 @@ OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_KEY")
 if OPENWEATHER_API_KEY:
     OPENWEATHER_API_KEY = OPENWEATHER_API_KEY.strip()
 
-# Set up the Landing Zone folder for unstructured data
-SAT_FOLDER = "../landing-zone/unstructured/satellite"
-# os.makedirs(SAT_FOLDER, exist_ok=True)
 
 print("Starting OpenWeather temperature map ingestion for Spain...")
 
@@ -38,7 +35,7 @@ try:
 
     if response.status_code == 200:
         # Save it as a PNG image
-        filename = f"{SAT_FOLDER}/spain_temp_{timestamp}.png"
+        filename = f"spain_temp_{timestamp}.png"
 
         upload_to_bronze(
             source_name="Satellite",
