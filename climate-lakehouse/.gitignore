@@ -1,4 +1,42 @@
+# ---- Secrets ----
 .env
+
+# ---- Python ----
 .venv/
-landing-zone/
 __pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ---- Data (can be large / regenerated) ----
+landing-zone/
+
+# ---- Spark ----
+# Ivy cache downloaded by spark-submit (jars are auto-downloaded)
+.ivy2/
+*.jar
+
+# ---- Airflow ----
+# Local airflow metadata if you ever run it outside Docker
+logs/
+airflow.db
+airflow.cfg
+webserver_config.py
+standalone_admin_password.txt
+
+# ---- Docker ----
+# No generated Docker artifacts to ignore, but keep this as a reminder
+# Never commit docker volumes or bind-mount data
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- IDEs ----
+.vscode/
+.idea/
+*.swp
+*.swo
