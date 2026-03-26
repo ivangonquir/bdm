@@ -41,32 +41,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ---------------- SPARK ----------------
-  spark:
-    image: apache/spark:3.5.3
-    container_name: spark
-    environment:
-      - SPARK_NO_DAEMONIZE=true
-    command: /opt/spark/sbin/start-master.sh
-    ports:
-      - "8080:8080"
-      - "7077:7077"
-    volumes:
-      - ./spark_job:/opt/spark_jobs
-      - ./landing-zone:/opt/airflow/landing-zone
-
-  spark-worker:
-    image: apache/spark:3.5.3
-    container_name: spark-worker
-    depends_on:
-      - spark
-    command: /opt/spark/sbin/start-worker.sh spark://spark:7077
-    environment:
-      - SPARK_NO_DAEMONIZE=true
-    volumes:
-      - ./spark_job:/opt/spark_jobs
-      - ./landing-zone:/opt/airflow/landing-zone
-
   # ---------------- AIRFLOW ----------------
   postgres:
     image: postgres:15
@@ -81,7 +55,7 @@ services:
       retries: 5
 
   airflow-init:
-    image: apache/airflow:2.8.1
+    image: apache/airflow:2.8.1-python3.11
     container_name: airflow-init
     depends_on:
       postgres:
@@ -89,13 +63,14 @@ services:
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - _PIP_ADDITIONAL_REQUIREMENTS=boto3 kafka-python python-dotenv requests duckdb deltalake pyarrow
     volumes:
       - ./.env:/opt/airflow/.env
-    command: bash -c "pip install minio kafka-python python-dotenv requests && airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true"
+    command: bash -c "airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true"
     restart: "no"
 
   airflow-webserver:
-    image: apache/airflow:2.8.1
+    image: apache/airflow:2.8.1-python3.11
     container_name: airflow-webserver
     depends_on:
       airflow-init:
@@ -110,21 +85,22 @@ services:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - _PIP_ADDITIONAL_REQUIREMENTS=boto3 kafka-python python-dotenv requests duckdb deltalake pyarrow
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./ingestion:/opt/airflow/ingestion
       - ./landing-zone:/opt/airflow/landing-zone
       - ./.env:/opt/airflow/.env
-    command: bash -c "pip install minio kafka-python python-dotenv requests && airflow webserver"
+    command: webserver
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 20s
       timeout: 10s
       retries: 10
-      start_period: 60s
+      start_period: 120s
 
   airflow-scheduler:
-    image: apache/airflow:2.8.1
+    image: apache/airflow:2.8.1-python3.11
     container_name: airflow-scheduler
     depends_on:
       airflow-webserver:
@@ -132,9 +108,10 @@ services:
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - _PIP_ADDITIONAL_REQUIREMENTS=boto3 kafka-python python-dotenv requests duckdb deltalake pyarrow
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./ingestion:/opt/airflow/ingestion
       - ./landing-zone:/opt/airflow/landing-zone
       - ./.env:/opt/airflow/.env
-    command: bash -c "pip install minio kafka-python python-dotenv requests && airflow scheduler"
+    command: scheduler

@@ -8,8 +8,6 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
 }
 
-# FIX: deps are installed at container startup in docker-compose, not here.
-# Running pip install on every task execution is slow and can cause race conditions.
 PYTHON = "python"
 
 with DAG(
@@ -19,6 +17,8 @@ with DAG(
     schedule_interval="@daily",
     catchup=False,
 ) as dag:
+
+    # ── Ingestion tasks ───────────────────────────────────────────────────────
 
     task_noaa = BashOperator(
         task_id="fetch_noaa",
@@ -40,20 +40,26 @@ with DAG(
         bash_command=f"{PYTHON} /opt/airflow/ingestion/fetch-satellite.py",
     )
 
-    # FIX: submit the Spark job to the Spark master cluster (not run locally inside Airflow).
-    # The spark_job/ folder is mounted into the Spark containers at /opt/spark_jobs/.
+    # ── Delta conversion tasks ────────────────────────────────────────────────
+
+    # Reads NOAA CSVs → writes Delta table s3://delta/noaa_bcn
     task_convert_delta = BashOperator(
-        task_id="convert_to_delta",
-        bash_command=(
-            "docker exec spark spark-submit "
-            "--packages io.delta:delta-spark_2.12:3.1.0 "
-            "--conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension "
-            "--conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog "
-            "/opt/spark_jobs/convert-to-delta.py"
-        ),
+        task_id="convert_noaa_to_delta",
+        bash_command=f"{PYTHON} /opt/airflow/ingestion/convert-to-delta.py",
     )
 
-    # FIX: set actual dependencies.
-    # All four fetch tasks run in parallel, then delta conversion runs after NOAA (needs CSV).
-    [task_openweather, task_eltiempo, task_satellite]  # these run in parallel, no deps
-    task_noaa >> task_convert_delta                    # delta conversion waits for NOAA data
+    # Reads weather-stream Kafka topic → writes Delta table s3://delta/weather_stream
+    task_consume_kafka = BashOperator(
+        task_id="consume_weather_kafka",
+        bash_command=f"{PYTHON} /opt/airflow/ingestion/consume-weather-kafka.py",
+    )
+
+    # ── Dependencies ──────────────────────────────────────────────────────────
+    #
+    #   fetch_noaa        ──► convert_noaa_to_delta
+    #   fetch_openweather ──► consume_weather_kafka
+    #   fetch_eltiempo     ─┐  (parallel, no downstream)
+    #   fetch_satellite    ─┘
+
+    task_noaa        >> task_convert_delta
+    task_openweather >> task_consume_kafka
