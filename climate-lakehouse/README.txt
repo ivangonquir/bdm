@@ -9,25 +9,27 @@ climate-lakehouse/
 │
 ├─ airflow/
 │   └─ dags/
-│       └─ ingestion-dag.py        (Airflow DAG definition)
+│       └─ ingestion-dag.py           (Airflow DAG definition)
 │
 ├─ ingestion/
+│   ├─ delta_utils.py                 (shared MinIO + Delta helpers)
+│   ├─ fetch-noaa-csv.py
 │   ├─ fetch-openweather.py
 │   ├─ fetch-eltiempo.py
-│   ├─ fetch-noaa-csv.py
-│   └─ fetch-satellite.py
+│   ├─ fetch-satellite.py
+│   ├─ convert-to-delta.py            (DuckDB → Delta Lake conversion)
+│   └─ consume-weather-kafka.py       (Kafka consumer → Delta Lake)
 │
 ├─ landing-zone/
 │   ├─ structured/
-│   │   ├─ noaa/                   (NOAA CSV datasets)
-│   │   └─ noaa_delta/             (Delta Lake table)
-│   ├─ semi-structured/            (OpenWeather JSON data)
-│   └─ unstructured/               (HTML pages and satellite images)
+│   │   └─ noaa/                      (NOAA CSV datasets, one per year)
+│   ├─ semi-structured/
+│   │   └─ openweathermap/            (OpenWeather JSON snapshots)
+│   └─ unstructured/
+│       ├─ eltiempo/                  (scraped HTML pages)
+│       └─ satellite/                 (temperature tile images)
 │
-├─ spark_job/
-│   └─ convert-to-delta.py        (PySpark Delta conversion job)
-│
-├─ .env                            (API keys - never commit this)
+├─ .env                               (API keys - never commit this)
 ├─ .gitignore
 ├─ docker-compose.yml
 ├─ requirements.txt
@@ -41,28 +43,30 @@ This project implements a Climate Data Lakehouse with a full ingestion
 layer, orchestration, object storage, stream processing, and open table
 format support.
 
-Data sources used:
+Data sources:
 
-- NOAA Climate Data (structured CSV, 2000-present)
-- OpenWeatherMap API (semi-structured JSON)
-- ElTiempo website scraping (unstructured HTML)
-- OpenWeather satellite temperature tiles (unstructured images)
+- NOAA Climate Data             (structured CSV, 2000-present)
+- OpenWeatherMap API            (semi-structured JSON + Kafka stream)
+- ElTiempo website scraping     (unstructured HTML)
+- OpenWeather satellite tiles   (unstructured PNG images)
 
-Streaming ingestion is implemented using Kafka.
-Object storage is implemented using MinIO.
-Orchestration is implemented using Apache Airflow.
-Open Table Format is implemented using Delta Lake on Apache Spark.
+Streaming ingestion  : Apache Kafka
+Object storage       : MinIO (S3-compatible)
+Orchestration        : Apache Airflow
+Open Table Format    : Delta Lake via delta-rs (no JVM / no Spark)
+Query engine         : DuckDB (CSV → Delta conversion)
 
 ----------------------------------------------------------------------
 
 REQUIREMENTS
 
-- Python 3.10+
+- Python 3.11+
 - Docker Desktop
 - OpenWeatherMap API key
 - NOAA API token
 
-Install Python dependencies:
+Install Python dependencies locally (optional, for running scripts
+outside Docker):
 
     pip install -r requirements.txt
 
@@ -77,33 +81,27 @@ Docker Compose starts the following services:
 
 2. Kafka
    Receives streaming weather data from OpenWeatherMap.
-   Configured with a healthcheck to ensure readiness before Airflow starts.
+   Healthcheck ensures readiness before Airflow starts.
 
 3. MinIO
-   S3-compatible object storage used as the Data Lake landing zone.
-   Console available at http://localhost:9001
+   S3-compatible object storage for the Data Lake.
+   Console: http://localhost:9001
 
 4. Postgres
-   Backend database for Airflow metadata.
-   Required for LocalExecutor and multi-container Airflow setup.
+   Metadata database for Airflow (required for LocalExecutor).
 
 5. Airflow Init
-   One-shot container that runs db migrate and creates the admin user,
-   then exits. Ensures the DB is ready before webserver and scheduler start.
+   One-shot container: runs db migrate + creates admin user, then exits.
+   Ensures the DB is fully ready before the webserver starts.
 
 6. Airflow Webserver
-   Web UI for managing and monitoring DAGs.
-   Available at http://localhost:8081 (admin / admin)
+   DAG management UI: http://localhost:8081  (admin / admin)
 
 7. Airflow Scheduler
    Triggers DAG runs on schedule.
 
-8. Spark Master
-   Apache Spark cluster master node.
-   UI available at http://localhost:8080
-
-9. Spark Worker
-   Executes Spark jobs submitted by the master.
+Note: Spark is NOT used in this project. Delta Lake is written using
+the delta-rs Python library (deltalake), which needs no JVM.
 
 ----------------------------------------------------------------------
 
@@ -111,33 +109,28 @@ SETUP INSTRUCTIONS
 
 1. Configure API Keys
 
-Create a .env file in the project root directory:
+Create a .env file in the project root:
 
     OPENWEATHER_KEY=YOUR_OPENWEATHER_API_KEY
     NOAA_TOKEN=YOUR_NOAA_API_TOKEN
-
-Replace the placeholders with your actual API keys.
 
 ----------------------------------------------------------------------
 
 2. Start Docker Services
 
-Make sure Docker Desktop is running.
-
-Open a terminal in the project root folder and run:
+Make sure Docker Desktop is running, then:
 
     docker compose up -d
 
-Boot order is managed automatically via healthchecks and depends_on:
+Boot order is managed automatically via healthchecks:
 
     postgres → airflow-init → airflow-webserver → airflow-scheduler
     zookeeper → kafka
     minio
-    spark → spark-worker
 
-Wait ~2 minutes for all services to become healthy on first boot.
+Allow ~2 minutes on first boot for airflow-init to finish.
 
-Check running containers:
+Check all containers are healthy:
 
     docker ps
 
@@ -145,22 +138,21 @@ Check running containers:
 
 3. Access Service UIs
 
-    Airflow:  http://localhost:8081   (admin / admin)
-    MinIO:    http://localhost:9001   (minioadmin / minioadmin)
-    Spark:    http://localhost:8080
+    Airflow : http://localhost:8081   (admin / admin)
+    MinIO   : http://localhost:9001   (minioadmin / minioadmin)
 
 ----------------------------------------------------------------------
 
 4. Create Kafka Topic
 
-Create the topic used for weather streaming data:
+Create the topic used for weather streaming before triggering the DAG:
 
     docker exec -it climate-lakehouse-kafka-1 kafka-topics \
         --create --topic weather-stream \
         --bootstrap-server localhost:9092 \
         --partitions 1 --replication-factor 1
 
-Verify the topic exists:
+Verify:
 
     docker exec -it climate-lakehouse-kafka-1 kafka-topics \
         --list --bootstrap-server localhost:9092
@@ -169,82 +161,83 @@ Verify the topic exists:
 
 5. Run the Airflow DAG
 
-Open http://localhost:8081, log in with admin/admin.
+Open http://localhost:8081 and log in with admin / admin.
 
-- Go to DAGs → climate_ingestion_pipeline
-- Toggle the DAG ON using the slider
-- Click the Trigger DAG button (play icon)
+    - Go to DAGs → climate_ingestion_pipeline
+    - Toggle the DAG ON (slider on the left)
+    - Click Trigger DAG (play button on the right)
 
-The DAG runs these tasks:
+Expected run time: ~5–8 minutes (NOAA fetches 2000-present year by year).
+
+The DAG runs the following tasks in order:
 
     fetch_noaa         → downloads NOAA CSV files (2000-present)
-    fetch_openweather  → fetches current weather JSON + sends to Kafka
-    fetch_eltiempo     → scrapes ElTiempo HTML page
-    fetch_satellite    → downloads OpenWeather temperature tile image
+                         uploads each year to MinIO structured/noaa/
+                         ↓
+    convert_noaa_to_delta → reads all CSVs with DuckDB, writes Delta
+                            table to MinIO at s3://delta/noaa_bcn
 
-    fetch_noaa triggers convert_to_delta after completion.
+    fetch_openweather  → fetches current weather JSON from OpenWeatherMap
+                         sends it to Kafka topic weather-stream
+                         uploads JSON snapshot to MinIO semi-structured/
+                         ↓
+    consume_weather_kafka → reads weather-stream Kafka topic, writes
+                            Delta table to MinIO at s3://delta/weather_stream
 
-All ingested files are saved locally under landing-zone/ and
-uploaded to the MinIO landing-zone bucket automatically.
+    fetch_eltiempo     → scrapes ElTiempo HTML, uploads to MinIO unstructured/
+    fetch_satellite    → downloads temperature tile PNG, uploads to MinIO
 
-----------------------------------------------------------------------
+fetch_eltiempo and fetch_satellite run in parallel with no downstream.
 
-6. Run the Delta Lake Conversion (Spark)
-
-After NOAA CSVs are ingested, convert them to Delta format by running:
-
-    docker exec spark /opt/spark/bin/spark-submit \
-        --packages io.delta:delta-spark_2.12:3.1.0 \
-        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
-        /opt/spark_jobs/convert-to-delta.py
-
-Output will appear at:
-
-    landing-zone/structured/noaa_delta/
-
-Verify it succeeded:
-
-    docker exec spark ls /opt/airflow/landing-zone/structured/noaa_delta/
-
-You should see a _delta_log/ folder and multiple .snappy.parquet files.
+To debug a failing task: click the red square in Grid view → Logs.
 
 ----------------------------------------------------------------------
 
-7. Data Storage Structure
+6. Data Storage Structure
 
-Inside MinIO (landing-zone bucket):
+MinIO landing-zone bucket (raw files):
 
-landing-zone/
-│
-├─ structured/
-│   └─ noaa/
-│       └─ noaa_bcn_YEAR.csv          (one file per year, 2000-present)
-│
-├─ semi-structured/
-│   └─ openweathermap/
-│       └─ weather_TIMESTAMP.json
-│
-└─ unstructured/
-    ├─ eltiempo/
-    │   └─ eltiempo_TIMESTAMP.html
-    │
-    └─ satellite/
-        └─ spain_temp_TIMESTAMP.png
+    landing-zone/
+    ├─ structured/noaa/noaa_bcn_YEAR.csv       (one file per year)
+    ├─ semi-structured/openweathermap/weather_TIMESTAMP.json
+    └─ unstructured/
+        ├─ eltiempo/eltiempo_TIMESTAMP.html
+        └─ satellite/spain_temp_TIMESTAMP.png
 
-Locally, a Delta table is also created at:
+MinIO delta bucket (Delta Lake tables):
 
-    landing-zone/structured/noaa_delta/
+    delta/
+    ├─ noaa_bcn/           (NOAA temperature data as Delta table)
+    │   ├─ _delta_log/
+    │   └─ *.snappy.parquet
+    └─ weather_stream/     (OpenWeather Kafka stream as Delta table)
+        ├─ _delta_log/
+        └─ *.snappy.parquet
 
 ----------------------------------------------------------------------
 
-8. Streaming Data (Kafka)
+7. Streaming Data (Kafka)
 
-The OpenWeatherMap script sends weather data to Kafka in real time.
+fetch-openweather.py produces one message per DAG run to:
 
-Topic used: weather-stream
+    Topic: weather-stream
 
-This enables real-time ingestion for future streaming processing pipelines.
+consume-weather-kafka.py consumes all unread messages and appends
+them to the Delta table s3://delta/weather_stream. Kafka offsets are
+committed only after a successful Delta write (at-least-once delivery).
+
+----------------------------------------------------------------------
+
+8. Delta Lake (Open Table Format)
+
+Delta tables are written using the delta-rs Python library (deltalake),
+a Rust implementation that requires no JVM or Spark cluster.
+
+Tables support:
+  - ACID transactions
+  - Schema evolution (schema_mode="merge")
+  - Time travel (read any historical version by number)
+  - VACUUM and OPTIMIZE operations
 
 ----------------------------------------------------------------------
 
@@ -252,9 +245,9 @@ This enables real-time ingestion for future streaming processing pipelines.
 
     docker compose down
 
-This stops all containers. Your local files and MinIO data are preserved.
+Stops all containers. Local files and MinIO data are preserved.
 
-To also remove volumes (full reset):
+Full reset (removes all volumes and stored data):
 
     docker compose down -v
 
@@ -262,15 +255,14 @@ To also remove volumes (full reset):
 
 NOTES
 
-- Do NOT commit the .env file. It contains sensitive API keys.
-- Do NOT commit the landing-zone/ folder. Data files can be large.
-- The Airflow image uses Python 3.8. All ingestion dependencies
-  (minio, kafka-python, python-dotenv, requests) are installed at
-  container startup via the docker-compose command.
-- Delta Lake requires Spark 3.x. The project uses apache/spark:3.5.3.
-- spark-submit is located at /opt/spark/bin/spark-submit inside the
-  Spark container (not on $PATH by default).
-- On first boot, allow ~2 minutes for airflow-init to complete before
-  the webserver becomes available.
+- Do NOT commit .env — it contains sensitive API keys.
+- Do NOT commit landing-zone/ — data files can be very large.
+- Airflow uses Python 3.11 (apache/airflow:2.8.1-python3.11).
+  Dependencies are installed via _PIP_ADDITIONAL_REQUIREMENTS in
+  docker-compose.yml — no pip install needed in the command.
+- Delta tables are stored in MinIO under the bucket named "delta",
+  not inside the local landing-zone/ folder.
+- The delta bucket is created automatically by the ingestion scripts
+  on first run via ensure_bucket("delta").
 
 ----------------------------------------------------------------------
