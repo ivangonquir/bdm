@@ -18,20 +18,45 @@ CSV_PATH = "/opt/airflow/landing-zone/structured/noaa/*.csv"
 
 print("Starting Delta Lake conversion for NOAA data...")
 
+conn = None
+
 try:
     conn = duckdb.connect()
 
+    # ✅ Check if files exist first (avoids silent failure)
+    files = conn.execute(f"""
+        SELECT count(*) 
+        FROM glob('{CSV_PATH}')
+    """).fetchone()[0]
+
+    if files == 0:
+        raise Exception("No CSV files found in landing zone")
+
+    print(f"Found {files} CSV files")
+
+    # ✅ Read CSVs with safer parsing
     df = conn.execute(f"""
         SELECT
-            CAST(date   AS TIMESTAMP) AS date,
+            TRY_CAST(date AS TIMESTAMP) AS date,
             datatype,
             station,
-            CAST(value  AS DOUBLE)    AS value,
+            TRY_CAST(value AS DOUBLE) AS value,
             attributes
-        FROM read_csv_auto('{CSV_PATH}', header=true)
+        FROM read_csv_auto(
+            '{CSV_PATH}',
+            header=true,
+            ignore_errors=true
+        )
     """).df()
 
+    if df.empty:
+        raise Exception("DataFrame is empty after reading CSVs")
+
     print(f"Read {len(df):,} records from CSV files")
+
+    df = df.dropna(subset=["date", "value"])
+
+    print(f"After cleaning: {len(df):,} records")
 
     write_delta("noaa_bcn", df, mode="overwrite")
 
@@ -42,4 +67,5 @@ except Exception as e:
     sys.exit(1)
 
 finally:
-    conn.close()
+    if conn:
+        conn.close()
