@@ -14,9 +14,10 @@ with DAG(
     dag_id="climate_ingestion_pipeline",
     default_args=default_args,
     start_date=datetime(2024, 1, 1),
-    # Weekly is enough — NOAA historical data doesn't change daily,
-    # and fetch-noaa now skips already-downloaded years automatically.
-    schedule_interval="@weekly",
+    # Daily schedule: OpenWeather, ElTiempo and satellite are live sources
+    # that update continuously. NOAA skips already-uploaded years instantly
+    # via the MinIO check, so running daily has negligible overhead.
+    schedule_interval="@daily",
     catchup=False,
 ) as dag:
 
@@ -60,15 +61,12 @@ with DAG(
     #
     #   fetch_noaa        ──► convert_noaa_to_delta
     #   fetch_openweather ──► consume_weather_kafka
-    #   fetch_eltiempo    ──► (no downstream — raw HTML stored in MinIO)
-    #   fetch_satellite   ──► (no downstream — raw PNG stored in MinIO)
-    #
-    # All 4 ingestion tasks run in parallel, then their respective
-    # downstream tasks run once their upstream has succeeded.
+    #   fetch_eltiempo        (writes eltiempo_metadata Delta table internally)
+    #   fetch_satellite       (writes satellite_metadata Delta table internally)
 
     task_noaa        >> task_convert_delta
     task_openweather >> task_consume_kafka
 
     # Explicitly declare eltiempo and satellite so Airflow tracks them
-    # properly and they appear in the DAG graph (were orphaned before).
+    # properly and they appear in the DAG graph.
     [task_eltiempo, task_satellite]
