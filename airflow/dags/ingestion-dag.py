@@ -3,7 +3,7 @@ from airflow.operators.bash import BashOperator
 from datetime import datetime, timedelta
 
 default_args = {
-    "owner": "data_engineer",
+    "owner": "Poland&Spain",
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
 }
@@ -14,15 +14,12 @@ with DAG(
     dag_id="climate_ingestion_pipeline",
     default_args=default_args,
     start_date=datetime(2024, 1, 1),
-    # Daily schedule: OpenWeather, ElTiempo and satellite are live sources
-    # that update continuously. NOAA skips already-uploaded years instantly
-    # via the MinIO check, so running daily has negligible overhead.
     schedule_interval="@daily",
     catchup=False,
 ) as dag:
 
-    # ── Ingestion tasks ───────────────────────────────────────────────────────
-
+    # Ingestion
+    
     task_noaa = BashOperator(
         task_id="fetch_noaa",
         bash_command=f"{PYTHON} /opt/airflow/ingestion/fetch-noaa-csv.py",
@@ -43,30 +40,20 @@ with DAG(
         bash_command=f"{PYTHON} /opt/airflow/ingestion/fetch-satellite.py",
     )
 
-    # ── Delta conversion tasks ────────────────────────────────────────────────
+    # Delta conversion tasks
 
-    # Reads NOAA CSVs → writes Delta table s3://delta/noaa_bcn
     task_convert_delta = BashOperator(
         task_id="convert_noaa_to_delta",
         bash_command=f"{PYTHON} /opt/airflow/ingestion/convert-to-delta.py",
     )
 
-    # Reads weather-stream Kafka topic → writes Delta table s3://delta/weather_stream
     task_consume_kafka = BashOperator(
         task_id="consume_weather_kafka",
         bash_command=f"{PYTHON} /opt/airflow/ingestion/consume-weather-kafka.py",
     )
 
-    # ── Dependencies ──────────────────────────────────────────────────────────
-    #
-    #   fetch_noaa        ──► convert_noaa_to_delta
-    #   fetch_openweather ──► consume_weather_kafka
-    #   fetch_eltiempo        (writes eltiempo_metadata Delta table internally)
-    #   fetch_satellite       (writes satellite_metadata Delta table internally)
-
     task_noaa        >> task_convert_delta
     task_openweather >> task_consume_kafka
 
-    # Explicitly declare eltiempo and satellite so Airflow tracks them
-    # properly and they appear in the DAG graph.
+    # Declare eltiempo and satellite so Airflow tracks them properly and they appear in the DAG graph.
     [task_eltiempo, task_satellite]

@@ -1,6 +1,4 @@
 """
-convert-to-delta.py
-────────────────────
 Reads all NOAA CSV files using DuckDB and writes them as a
 Delta Lake table to MinIO at s3://delta/noaa_bcn
 """
@@ -23,7 +21,6 @@ conn = None
 try:
     conn = duckdb.connect()
 
-    # ✅ Check if files exist first (avoids silent failure)
     files = conn.execute(f"""
         SELECT count(*) 
         FROM glob('{CSV_PATH}')
@@ -34,7 +31,6 @@ try:
 
     print(f"Found {files} CSV files")
 
-    # ✅ Read CSVs with safer parsing
     df = conn.execute(f"""
         SELECT
             TRY_CAST(date AS TIMESTAMP) AS date,

@@ -36,7 +36,7 @@ try:
                        ExtraArgs={"ContentType": "text/html"})
         print(f"[MinIO] Uploaded: {object_name}")
 
-        # ── Write metadata record to Delta ────────────────────────────────
+        # Write metadata to Delta
         metadata = pa.table({
             "ingested_at": pa.array([datetime.now(tz=timezone.utc)], type=pa.timestamp("us", tz="UTC")),
             "source":      pa.array(["eltiempo"]),
@@ -47,7 +47,6 @@ try:
         })
         write_delta("eltiempo_metadata", metadata, mode="append")
         print("[Delta] Metadata written for eltiempo")
-        # ─────────────────────────────────────────────────────────────────
 
     else:
         raise Exception(f"HTTP Error {response.status_code}")

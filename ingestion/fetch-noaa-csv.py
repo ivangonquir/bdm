@@ -35,14 +35,14 @@ for year in range(START_YEAR, END_YEAR + 1):
     filename    = f"{FOLDER}/noaa_bcn_{year}.csv"
     object_name = f"structured/noaa/noaa_bcn_{year}.csv"
 
-    # ── Skip years already in MinIO (more reliable than checking local disk) ──
+    # Skip years already in MinIO
     try:
         s3.head_object(Bucket=BUCKET_LANDING, Key=object_name)
         print(f"[Skip] {year} already in MinIO — skipping.")
         skipped += 1
         continue
     except Exception:
-        pass  # Not found in MinIO, proceed with fetch
+        pass
 
     params = [
         ("datasetid",  DATASET_ID),
@@ -87,7 +87,6 @@ for year in range(START_YEAR, END_YEAR + 1):
             print(f"[NOAA] No results for {year} — skipping.")
 
     elif response.status_code == 429:
-        # Rate limited — wait longer and retry once
         print(f"[WARN] Rate limited on {year} (429) — waiting 60 s and retrying...")
         time.sleep(60)
         retry = requests.get(url, headers=headers, params=params, timeout=30)

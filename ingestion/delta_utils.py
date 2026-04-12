@@ -1,6 +1,4 @@
 """
-delta_utils.py
-──────────────
 Shared helpers for Delta Lake + MinIO operations.
 Place this file in the ingestion/ folder.
 """
@@ -13,12 +11,11 @@ import pyarrow as pa
 from botocore.client import Config
 from deltalake import DeltaTable, write_deltalake
 
-# ── MinIO connection ──────────────────────────────────────────────────────────
+# MinIO connection 
 MINIO_ENDPOINT   = os.getenv("MINIO_ENDPOINT",   "http://minio:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 
-# Used by deltalake library for all S3 operations
 storage_options: dict = {
     "endpoint_url":               MINIO_ENDPOINT,
     "access_key_id":              MINIO_ACCESS_KEY,
@@ -29,7 +26,6 @@ storage_options: dict = {
     "AWS_ALLOW_HTTP":             "true",
 }
 
-# Used by boto3 for bucket/object operations
 s3 = boto3.client(
     "s3",
     endpoint_url=MINIO_ENDPOINT,
@@ -39,10 +35,8 @@ s3 = boto3.client(
     region_name="us-east-1",
 )
 
-# ── Bucket constants ──────────────────────────────────────────────────────────
 BUCKET_LANDING = "landing-zone"
 BUCKET_DELTA   = "s3://delta"
-
 
 def ensure_bucket(bucket_name: str) -> None:
     """Create a MinIO bucket if it does not already exist."""
@@ -51,13 +45,9 @@ def ensure_bucket(bucket_name: str) -> None:
         s3.create_bucket(Bucket=bucket_name)
         print(f"[MinIO] Created bucket: {bucket_name}")
 
-
 def delta_path(table_name: str) -> str:
     """Return the S3 URI for a Delta table stored in MinIO."""
     return f"{BUCKET_DELTA}/{table_name}"
-
-
-# ── Write helpers ─────────────────────────────────────────────────────────────
 
 def write_delta(
     table_name: str,
@@ -82,9 +72,6 @@ def write_delta(
     )
     print(f"[Delta] Wrote {len(data):,} rows → {delta_path(table_name)} (mode={mode})")
 
-
-# ── Read helpers ──────────────────────────────────────────────────────────────
-
 def read_delta(table_name: str, version: Optional[int] = None) -> pa.Table:
     """Read a Delta table from MinIO as a PyArrow Table."""
     dt = DeltaTable(
@@ -102,9 +89,6 @@ def open_delta(table_name: str, version: Optional[int] = None) -> DeltaTable:
         storage_options=storage_options,
         version=version,
     )
-
-
-# ── Utility helpers ───────────────────────────────────────────────────────────
 
 def table_history(table_name: str, limit: int = 20):
     """Return the commit history of a Delta table as a pandas DataFrame."""

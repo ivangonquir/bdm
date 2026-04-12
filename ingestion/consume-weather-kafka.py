@@ -1,12 +1,9 @@
 """
-consume-weather-kafka.py
-────────────────────────
+
 Consumes weather events from the Kafka topic 'weather-stream'
 (produced by fetch-openweather.py) and appends them to the
 Delta Lake table s3://delta/weather_stream in MinIO.
 
-Kafka offsets are committed only AFTER a successful Delta write
-so no messages are lost if the write fails (at-least-once delivery).
 """
 
 import json
@@ -31,11 +28,11 @@ ensure_bucket("delta")
 consumer = KafkaConsumer(
     KAFKA_TOPIC,
     bootstrap_servers=KAFKA_BROKERS,
-    auto_offset_reset="earliest",    # first run reads from the beginning
-    enable_auto_commit=False,        # commit manually after Delta write
+    auto_offset_reset="earliest",  
+    enable_auto_commit=False,       
     group_id=KAFKA_GROUP,
     value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-    consumer_timeout_ms=5_000,       # stop after 5 s with no new messages
+    consumer_timeout_ms=5_000,      
 )
 
 raw_records = [msg.value for msg in consumer]
@@ -61,7 +58,6 @@ def safe_get(record, *keys, default=None):
     return val if val is not None else default
 
 
-# ── Parse OpenWeather JSON into typed PyArrow arrays ─────────────────────────
 table = pa.table({
     "ingested_at": pa.array(
         [datetime.now(tz=timezone.utc)] * len(raw_records),
@@ -82,7 +78,6 @@ table = pa.table({
     "weather_desc":  pa.array([safe_get(r, "weather", 0, "description",default="") for r in raw_records], type=pa.string()),
 })
 
-# ── Write to Delta, then commit Kafka offsets ─────────────────────────────────
 write_delta("weather_stream", table, mode="append")
 
 consumer.commit()
