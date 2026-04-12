@@ -3,7 +3,7 @@
 ## Folder Structure
 
 ```
-climate-lakehouse/
+bdm/
 │
 ├─ airflow/
 │   └─ dags/
@@ -96,7 +96,7 @@ NOAA_TOKEN=YOUR_NOAA_API_TOKEN
 AIRFLOW__WEBSERVER__SECRET_KEY=YOUR_SECRET_KEY
 ```
  
-> **Important:** `AIRFLOW__WEBSERVER__SECRET_KEY` must be set and identical across all Airflow containers (webserver, scheduler, init). Without it, each container generates a random key on startup causing 403 errors when fetching task logs in the UI.
+> **Important:** `AIRFLOW__WEBSERVER__SECRET_KEY` must be set and identical across all Airflow containers (webserver, scheduler, init). Without it, each container generates a random key on startup causing 403 errors when fetching task logs in the UI. Any random string works.
 
 ### 2. Start Docker Services
 
@@ -134,14 +134,14 @@ docker ps
 Create the topic used for weather streaming before triggering the DAG:
 
 ```bash
-docker exec -it climate-lakehouse-kafka-1 kafka-topics --create --topic weather-stream --bootstrap-server localhost:9092 \
---partitions 1 --replication-factor 1
+docker exec -it bdm-kafka-1 kafka-topics --create --topic weather-stream --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+
 ```
 
 Verify it exists:
 
 ```bash
-docker exec -it climate-lakehouse-kafka-1 kafka-topics --list --bootstrap-server localhost:9092
+docker exec -it bdm-kafka-1 kafka-topics --list --bootstrap-server localhost:9092
 ```
 
 ### 5. Run the Airflow DAG
