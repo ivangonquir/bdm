@@ -88,7 +88,7 @@ Docker Compose starts the following services:
  
 ### 1. Configure API Keys
  
-Create a `.env` file in the project root:
+Create a `.env` file in the project root and copy the contents of `.env.example`:
  
 ```env
 OPENWEATHER_KEY=YOUR_OPENWEATHER_API_KEY
