@@ -5,3 +5,9 @@ boto3
 duckdb
 deltalake
 pyarrow
+clickhouse-connect
+pymongo
+pymilvus
+fastembed
+beautifulsoup4
+Pillow

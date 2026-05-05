@@ -41,6 +41,87 @@ services:
       timeout: 5s
       retries: 5
 
+  # ---------------- CLICKHOUSE ----------------
+  clickhouse:
+    image: clickhouse/clickhouse-server:24
+    container_name: clickhouse
+    ports:
+      - "8123:8123"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------- MONGODB ----------------
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------- ETCD (required by Milvus) ----------------
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    command: >
+      etcd
+      -advertise-client-urls=http://127.0.0.1:2379
+      -listen-client-urls=http://0.0.0.0:2379
+      --data-dir=/etcd
+    volumes:
+      - etcd_data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------- MILVUS ----------------
+  milvus:
+    image: milvusdb/milvus:v2.4.13
+    container_name: milvus
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+
   # ---------------- AIRFLOW ----------------
   postgres:
     image: postgres:15
@@ -55,7 +136,7 @@ services:
       retries: 5
 
   airflow-init:
-    image: apache/airflow:2.8.1-python3.11
+    build: ./airflow
     container_name: airflow-init
     depends_on:
       postgres:
@@ -64,14 +145,13 @@ services:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW__WEBSERVER__SECRET_KEY}
-      - _PIP_ADDITIONAL_REQUIREMENTS=boto3 kafka-python python-dotenv requests duckdb deltalake pyarrow
     volumes:
       - ./.env:/opt/airflow/.env
     command: bash -c "airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true"
     restart: "no"
 
   airflow-webserver:
-    image: apache/airflow:2.8.1-python3.11
+    build: ./airflow
     container_name: airflow-webserver
     depends_on:
       airflow-init:
@@ -80,6 +160,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
     ports:
       - "8081:8080"
     environment:
@@ -87,12 +171,14 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW__WEBSERVER__SECRET_KEY}
-      - _PIP_ADDITIONAL_REQUIREMENTS=boto3 kafka-python python-dotenv requests duckdb deltalake pyarrow
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./ingestion:/opt/airflow/ingestion
+      - ./trusted-zone:/opt/airflow/trusted-zone
+      - ./exploitation-zone:/opt/airflow/exploitation-zone
       - ./landing-zone:/opt/airflow/landing-zone
       - ./.env:/opt/airflow/.env
+      - fastembed_cache:/home/airflow/.cache/fastembed
     command: webserver
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
@@ -102,7 +188,7 @@ services:
       start_period: 120s
 
   airflow-scheduler:
-    image: apache/airflow:2.8.1-python3.11
+    build: ./airflow
     container_name: airflow-scheduler
     depends_on:
       airflow-webserver:
@@ -111,10 +197,19 @@ services:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW__WEBSERVER__SECRET_KEY}
-      - _PIP_ADDITIONAL_REQUIREMENTS=boto3 kafka-python python-dotenv requests duckdb deltalake pyarrow
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./ingestion:/opt/airflow/ingestion
+      - ./trusted-zone:/opt/airflow/trusted-zone
+      - ./exploitation-zone:/opt/airflow/exploitation-zone
       - ./landing-zone:/opt/airflow/landing-zone
       - ./.env:/opt/airflow/.env
+      - fastembed_cache:/home/airflow/.cache/fastembed
     command: scheduler
+
+volumes:
+  clickhouse_data:
+  mongodb_data:
+  etcd_data:
+  milvus_data:
+  fastembed_cache:
