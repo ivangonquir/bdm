@@ -178,7 +178,6 @@ services:
       - ./exploitation-zone:/opt/airflow/exploitation-zone
       - ./landing-zone:/opt/airflow/landing-zone
       - ./.env:/opt/airflow/.env
-      - fastembed_cache:/home/airflow/.cache/fastembed
     command: webserver
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
@@ -204,7 +203,6 @@ services:
       - ./exploitation-zone:/opt/airflow/exploitation-zone
       - ./landing-zone:/opt/airflow/landing-zone
       - ./.env:/opt/airflow/.env
-      - fastembed_cache:/home/airflow/.cache/fastembed
     command: scheduler
 
 volumes:
@@ -212,4 +210,3 @@ volumes:
   mongodb_data:
   etcd_data:
   milvus_data:
-  fastembed_cache:

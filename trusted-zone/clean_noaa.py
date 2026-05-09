@@ -61,7 +61,7 @@ client.command("CREATE DATABASE IF NOT EXISTS trusted")
 client.command("DROP TABLE IF EXISTS trusted.noaa_bcn")
 client.command("""
     CREATE TABLE trusted.noaa_bcn (
-        date        DateTime,
+        date        DateTime64(3),
         datatype    LowCardinality(String),
         station     String,
         value       Float64,
