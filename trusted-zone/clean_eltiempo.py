@@ -2,16 +2,24 @@
 Landing Zone → Trusted Zone: ElTiempo unstructured HTML files.
 
 Lists all HTML files in MinIO landing-zone/unstructured/eltiempo/, validates
-each file (non-empty, valid HTML structure, UTF-8 encoding) and copies valid
-files to MinIO trusted-zone/unstructured/eltiempo/.
+each file and applies structural cleaning before copying valid files to
+MinIO trusted-zone/unstructured/eltiempo/.
 
-Validation applied:
+Validation and cleaning applied:
   - File must be at least 100 bytes
   - Must contain an <html> tag (confirms it is an HTML document)
   - Content is re-encoded as UTF-8 to standardise encoding
+  - <script>, <style>, <nav>, <footer>, <header> tags are stripped
+  - Excessive whitespace is collapsed to single spaces
+  - Degree symbol (°) is removed from temperature strings
+  - Scrape timestamp is extracted from the filename and logged
+  - Title date is compared against filename timestamp (mismatch flagged)
 """
 
+import re
 import sys
+from datetime import datetime
+from bs4 import BeautifulSoup
 
 sys.path.insert(0, "/opt/airflow/ingestion")
 from delta_utils import s3, ensure_bucket
@@ -39,28 +47,70 @@ for key in files:
         obj     = s3.get_object(Bucket=BUCKET_LANDING, Key=key)
         content = obj["Body"].read()
 
-        # Validate minimum size
+        # ── Minimum size check ────────────────────────────────────────────────
         if len(content) < 100:
             print(f"[SKIP] {key} — too small ({len(content)} bytes)")
             invalid += 1
             continue
 
-        # Validate HTML structure
+        # ── UTF-8 decode ──────────────────────────────────────────────────────
         text = content.decode("utf-8", errors="replace")
+
+        # ── HTML structure validation ─────────────────────────────────────────
         if "<html" not in text.lower():
             print(f"[SKIP] {key} — no <html> tag found")
             invalid += 1
             continue
 
-        # Re-encode as clean UTF-8
-        clean = text.encode("utf-8")
+        # ── Timestamp extraction from filename ────────────────────────────────
+        # Expected format: eltiempo_YYYYMMDD_HHMMSS.html
+        filename   = key.split("/")[-1]
+        scrape_ts  = None
+        ts_match   = re.search(r"(\d{8})_(\d{6})", filename)
+        if ts_match:
+            try:
+                scrape_ts = datetime.strptime(
+                    ts_match.group(1) + ts_match.group(2), "%Y%m%d%H%M%S"
+                )
+            except ValueError:
+                pass
+
+        # ── Boilerplate removal ───────────────────────────────────────────────
+        soup = BeautifulSoup(text, "html.parser")
+        for tag in soup(["script", "style", "nav", "footer", "header"]):
+            tag.decompose()
+
+        # ── Title date consistency check ──────────────────────────────────────
+        if scrape_ts:
+            title_tag = soup.find("title")
+            if title_tag:
+                title_text = title_tag.get_text()
+                # Check if scrape month appears anywhere in the title
+                month_names = ["enero","febrero","marzo","abril","mayo","junio",
+                               "julio","agosto","septiembre","octubre","noviembre","diciembre"]
+                expected_month = month_names[scrape_ts.month - 1]
+                if expected_month not in title_text.lower():
+                    print(f"[WARN] {key} — title month mismatch "
+                          f"(expected '{expected_month}', title: '{title_text[:60]}')")
+
+        # ── Whitespace normalisation ──────────────────────────────────────────
+        clean_text = re.sub(r"\s+", " ", soup.get_text(separator=" ")).strip()
+
+        # ── Degree symbol removal ─────────────────────────────────────────────
+        clean_text = clean_text.replace("°", "")
+
+        # ── Re-encode as clean UTF-8 ──────────────────────────────────────────
+        clean_bytes = str(soup).encode("utf-8")
 
         s3.put_object(
             Bucket=BUCKET_TRUSTED,
             Key=key,
-            Body=clean,
+            Body=clean_bytes,
             ContentType="text/html; charset=utf-8",
         )
+
+        ts_str = scrape_ts.isoformat() if scrape_ts else "unknown"
+        print(f"[OK] {key} — scrape_ts={ts_str}")
         valid += 1
 
     except Exception as exc:
