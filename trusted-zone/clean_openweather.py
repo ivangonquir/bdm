@@ -45,7 +45,7 @@ print(f"Dropped {before - len(df):,} duplicate events")
 
 # ── 2. Validate temperature range ───────────────────────────────────────────
 before = len(df)
-mask = df["temp_c"].isna() | ((df["temp_c"] >= -50) & (df["temp_c"] <= 60))
+mask = df["temp_c"].isna() | ((df["temp_c"] >= -15) & (df["temp_c"] <= 45))
 df = df[mask]
 print(f"Dropped {before - len(df):,} rows with invalid temperature")
 
@@ -55,7 +55,29 @@ mask = df["humidity_pct"].isna() | ((df["humidity_pct"] >= 0) & (df["humidity_pc
 df = df[mask]
 print(f"Dropped {before - len(df):,} rows with invalid humidity")
 
-# ── 4. Fill missing string fields ────────────────────────────────────────────
+# After step 3, add pressure validation:
+# ── 4. Validate pressure range ───────────────────────────────────────────────
+before = len(df)
+mask = df["pressure_hpa"].isna() | ((df["pressure_hpa"] >= 900) & (df["pressure_hpa"] <= 1100))
+df = df[mask]
+print(f"Dropped {before - len(df):,} rows with invalid pressure")
+
+# ── 5. Timezone normalisation ────────────────────────────────────────────────
+if "utc_offset" in df.columns:
+    def offset_to_string(seconds):
+        if pd.isna(seconds):
+            return ""
+        hours = int(seconds) // 3600
+        return f"UTC+{hours}" if hours >= 0 else f"UTC{hours}"
+    df["utc_offset"] = df["utc_offset"].apply(offset_to_string)
+
+# ── 6. Drop internal API metadata if present ─────────────────────────────────
+drop_cols = [c for c in ["base", "cod"] if c in df.columns]
+if drop_cols:
+    df = df.drop(columns=drop_cols)
+    print(f"Dropped internal API columns: {drop_cols}")
+
+# ── 7. Fill missing string fields ────────────────────────────────────────────
 df["city"]         = df["city"].fillna("Barcelona")
 df["weather_main"] = df["weather_main"].fillna("")
 df["weather_desc"] = df["weather_desc"].fillna("")

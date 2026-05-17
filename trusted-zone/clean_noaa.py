@@ -7,7 +7,7 @@ and writes the result to ClickHouse database 'trusted', table 'noaa_bcn'.
 Cleaning applied:
   - Drop rows with null date or value
   - Data is already in °C (CDO API with units=metric returns proper Celsius)
-  - Remove records outside Barcelona-specific bounds [-10, 45] °C
+  - Remove records outside Barcelona-specific bounds [-15, 45] °C
   - Deduplicate on (date, datatype, station), keeping first occurrence
   - Flag missing days with is_gap = True
   - Flag TMIN >= TMAX inconsistencies with is_inconsistent = True
@@ -44,8 +44,8 @@ print(f"Dropped {before - len(df):,} rows with null date or value")
 
 # ── 3. Barcelona-specific temperature range validation ───────────────────────
 before = len(df)
-df = df[(df["value"] >= -10) & (df["value"] <= 45)]
-print(f"Dropped {before - len(df):,} rows outside Barcelona range [-10, 45] °C")
+df = df[(df["value"] >= -15) & (df["value"] <= 45)]
+print(f"Dropped {before - len(df):,} rows outside Barcelona range [-15, 45] °C")
 
 # ── 4. Deduplicate on natural key ────────────────────────────────────────────
 before = len(df)
