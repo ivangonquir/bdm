@@ -178,7 +178,6 @@ services:
       - ./exploitation-zone:/opt/airflow/exploitation-zone
       - ./landing-zone:/opt/airflow/landing-zone
       - ./.env:/opt/airflow/.env
-      - ./models:/opt/airflow/models    # persists sentence-transformers model across runs
     command: webserver
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
@@ -204,7 +203,6 @@ services:
       - ./exploitation-zone:/opt/airflow/exploitation-zone
       - ./landing-zone:/opt/airflow/landing-zone
       - ./.env:/opt/airflow/.env
-      - ./models:/opt/airflow/models    # persists sentence-transformers model across runs
     command: scheduler
 
 volumes:

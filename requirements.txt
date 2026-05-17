@@ -8,6 +8,6 @@ pyarrow
 clickhouse-connect
 pymongo
 pymilvus
-sentence-transformers
+fastembed
 beautifulsoup4
 Pillow

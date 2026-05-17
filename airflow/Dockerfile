@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir \
     clickhouse-connect \
     pymongo \
     pymilvus \
-    sentence-transformers \
+    fastembed \
     beautifulsoup4 \
     Pillow
+
+# Pre-download the FastEmbed model at build time so it is always available at runtime
+RUN python -c "from fastembed import TextEmbedding; list(TextEmbedding('BAAI/bge-small-en-v1.5').embed(['warmup']))"
