@@ -25,7 +25,12 @@ MONGO_URI = "mongodb://mongodb:27017/"
 print("=== OpenWeather Trusted Zone Cleaning ===")
 
 # ── Read from Delta ──────────────────────────────────────────────────────────
-table = read_delta("weather_stream")
+try:
+    table = read_delta("weather_stream")
+except Exception as e:
+    print(f"weather_stream Delta table not found or empty — skipping. ({e})")
+    sys.exit(0)
+
 df = table.to_pandas()
 print(f"Read {len(df):,} records from Delta landing zone")
 

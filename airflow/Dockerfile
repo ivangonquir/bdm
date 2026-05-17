@@ -17,6 +17,6 @@ RUN pip install --no-cache-dir \
     clickhouse-connect \
     pymongo \
     pymilvus \
-    fastembed \
+    sentence-transformers \
     beautifulsoup4 \
     Pillow
