@@ -4,21 +4,6 @@ A full Big Data Architecture for climate data, built across two project phases. 
 
 ---
 
-## Project Status
-
-| Zone | Status |
-|---|---|
-| Landing Zone (P1) | Done |
-| Trusted Zone (P2) | Done (code written, not yet run end-to-end) |
-| Exploitation Zone (P2) | Done (code written, not yet run end-to-end) |
-| Data Consumption (P2) | **Not started** |
-| Architecture Diagram (P2) | **Not started** |
-| Governance (P2, optional) | **Not started** |
-
----
-
-## What Has Been Done
-
 ### P1 — Landing Zone
 
 Full ingestion pipeline that fetches data from four sources and stores it in MinIO and Delta Lake:
@@ -202,7 +187,7 @@ Allow ~2 minutes on first boot for `airflow-init` to finish.
 ### 3. Create the Kafka topic
 
 ```bash
-docker exec -it bdm-kafka-1 kafka-topics --create \
+docker exec -it climate-kafka-1 kafka-topics --create \
   --topic weather-stream \
   --bootstrap-server localhost:9092 \
   --partitions 1 \
