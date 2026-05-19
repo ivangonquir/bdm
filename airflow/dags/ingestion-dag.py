@@ -64,6 +64,13 @@ with DAG(
         bash_command=f"{PYTHON} /opt/airflow/trusted-zone/clean_satellite.py",
     )
 
+    # ── GOVERNANCE: data quality validation ──────────────────────────────────
+
+    task_validate_quality = BashOperator(
+        task_id="validate_quality",
+        bash_command=f"{PYTHON} /opt/airflow/governance/validate_quality.py",
+    )
+
     # ── EXPLOITATION ZONE: curation & enrichment ──────────────────────────────
 
     task_build_unified = BashOperator(
@@ -99,8 +106,11 @@ with DAG(
     task_eltiempo >> task_clean_eltiempo
     task_satellite >> task_clean_satellite
 
-    # Trusted → Exploitation (structured: join + KPIs)
-    [task_clean_noaa, task_clean_openweather] >> task_build_unified >> task_compute_kpis
+    # Trusted → Governance (quality validation runs after all cleaning)
+    [task_clean_noaa, task_clean_openweather] >> task_validate_quality
+
+    # Trusted → Exploitation (structured: join + KPIs, after validation passes)
+    task_validate_quality >> task_build_unified >> task_compute_kpis
 
     # Trusted → Exploitation (semi-structured: enrichment)
     task_clean_openweather >> task_curate_weather

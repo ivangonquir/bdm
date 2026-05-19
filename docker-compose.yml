@@ -122,6 +122,18 @@ services:
       timeout: 20s
       retries: 3
 
+  # ---------------- STREAMLIT DASHBOARD ----------------
+  streamlit:
+    build: ./consumption
+    container_name: streamlit
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./consumption:/app
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
   # ---------------- AIRFLOW ----------------
   postgres:
     image: postgres:15
@@ -177,6 +189,7 @@ services:
       - ./trusted-zone:/opt/airflow/trusted-zone
       - ./exploitation-zone:/opt/airflow/exploitation-zone
       - ./landing-zone:/opt/airflow/landing-zone
+      - ./governance:/opt/airflow/governance
       - ./.env:/opt/airflow/.env
     command: webserver
     healthcheck:
@@ -202,6 +215,7 @@ services:
       - ./trusted-zone:/opt/airflow/trusted-zone
       - ./exploitation-zone:/opt/airflow/exploitation-zone
       - ./landing-zone:/opt/airflow/landing-zone
+      - ./governance:/opt/airflow/governance
       - ./.env:/opt/airflow/.env
     command: scheduler
 

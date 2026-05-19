@@ -86,13 +86,13 @@ print(f"Final clean record count: {len(df):,}")
 
 # ── Convert to plain Python dicts (MongoDB-safe) ─────────────────────────────
 records = df.to_dict("records")
-for r in records:
+for i, r in enumerate(records):
     for key in ("ingested_at", "event_ts"):
         val = r.get(key)
         if hasattr(val, "to_pydatetime"):
             r[key] = val.to_pydatetime()
-    # Convert any remaining numpy scalars
-    r = {k: (v.item() if isinstance(v, np.generic) else v) for k, v in r.items()}
+    # Convert any remaining numpy scalars and write back into the list
+    records[i] = {k: (v.item() if isinstance(v, np.generic) else v) for k, v in r.items()}
 
 # ── Write to MongoDB ─────────────────────────────────────────────────────────
 client = MongoClient(MONGO_URI)

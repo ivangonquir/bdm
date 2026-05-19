@@ -187,7 +187,7 @@ Allow ~2 minutes on first boot for `airflow-init` to finish.
 ### 3. Create the Kafka topic
 
 ```bash
-docker exec -it climate-kafka-1 kafka-topics --create \
+docker exec -it climate-lakehouse-kafka-1 kafka-topics --create \
   --topic weather-stream \
   --bootstrap-server localhost:9092 \
   --partitions 1 \
@@ -209,8 +209,8 @@ Expected run time: ~5–8 minutes on first run. Subsequent runs are faster (NOAA
 | Airflow | http://localhost:8081 | admin / admin |
 | MinIO | http://localhost:9001 | minioadmin / minioadmin |
 | ClickHouse | http://localhost:8123 | no auth |
-| MongoDB | localhost:27017 | no auth |
-| Milvus | localhost:19530 | no auth |
+| MongoDB | http://localhost:27017 | no auth |
+| Milvus | http://localhost:19530 | no auth |
 
 ### 6. Stop services
 

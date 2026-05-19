@@ -31,10 +31,12 @@ print("=== Satellite Trusted Zone Cleaning ===")
 
 ensure_bucket(BUCKET_TRUSTED)
 
-# ── List PNG files in landing zone ───────────────────────────────────────────
-response = s3.list_objects_v2(Bucket=BUCKET_LANDING, Prefix=PREFIX)
-files    = [obj["Key"] for obj in response.get("Contents", [])
-            if obj["Key"].endswith(".png")]
+# ── List PNG files in landing zone (paginated) ───────────────────────────────
+files = []
+paginator = s3.get_paginator("list_objects_v2")
+for page in paginator.paginate(Bucket=BUCKET_LANDING, Prefix=PREFIX):
+    files.extend(obj["Key"] for obj in page.get("Contents", [])
+                 if obj["Key"].endswith(".png"))
 
 print(f"Found {len(files)} PNG files in landing zone")
 

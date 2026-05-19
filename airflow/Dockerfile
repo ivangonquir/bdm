@@ -19,7 +19,8 @@ RUN pip install --no-cache-dir \
     pymilvus \
     fastembed \
     beautifulsoup4 \
-    Pillow
+    Pillow \
+    "great-expectations>=0.18,<1.0"
 
 # Pre-download the FastEmbed model at build time so it is always available at runtime
 RUN python -c "from fastembed import TextEmbedding; list(TextEmbedding('BAAI/bge-small-en-v1.5').embed(['warmup']))"

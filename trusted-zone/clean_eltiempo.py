@@ -32,10 +32,12 @@ print("=== ElTiempo Trusted Zone Cleaning ===")
 
 ensure_bucket(BUCKET_TRUSTED)
 
-# ── List HTML files in landing zone ─────────────────────────────────────────
-response = s3.list_objects_v2(Bucket=BUCKET_LANDING, Prefix=PREFIX)
-files    = [obj["Key"] for obj in response.get("Contents", [])
-            if obj["Key"].endswith(".html")]
+# ── List HTML files in landing zone (paginated) ──────────────────────────────
+files = []
+paginator = s3.get_paginator("list_objects_v2")
+for page in paginator.paginate(Bucket=BUCKET_LANDING, Prefix=PREFIX):
+    files.extend(obj["Key"] for obj in page.get("Contents", [])
+                 if obj["Key"].endswith(".html"))
 
 print(f"Found {len(files)} HTML files in landing zone")
 
