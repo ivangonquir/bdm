@@ -4,6 +4,24 @@ A full Big Data Architecture for climate data, built across two project phases. 
 
 ---
 
+## Architecture
+
+![Architecture Diagram](assets/architecture.png)
+
+---
+
+## Dashboard
+
+
+> **Demo video**
+
+Click on the image to watch a demo of the dashboard.
+
+[![Watch the demo](assets/streamlit_dashboard.png)](https://youtu.be/2U5NCktmeUA)
+
+
+---
+
 ## Project Status
 
 | Constraint | Deliverable | Status |
@@ -13,7 +31,7 @@ A full Big Data Architecture for climate data, built across two project phases. 
 | Exploitation Zone | Unified table, KPIs, curated docs, embeddings | Done |
 | Data Consumption | Streamlit dashboard + RAG chatbot | Done |
 | Data Governance | Great Expectations quality validation | Done |
-| Architecture Diagram | For the report | Pending |
+| Architecture Diagram | `assets/architecture.png` | Pending |
 
 ---
 
@@ -91,7 +109,7 @@ Semantic search over ElTiempo forecast pages powered by Milvus:
 - FastEmbed embeds the query (same model used at ingestion time)
 - Milvus returns the top-3 most similar ElTiempo passages
 - Each passage is shown with its filename and similarity score
-- If `GROQ_API_KEY` is set, Groq (`llama3-8b-8192`) generates a prose answer grounded in those passages
+- If `GROQ_API_KEY` is set, Groq (`llama-3.3-70b-versatile`) generates a prose answer grounded in those passages
 
 ---
 
@@ -286,7 +304,7 @@ climate-lakehouse/
 | Embeddings | FastEmbed (BAAI/bge-small-en-v1.5, ONNX, CPU) |
 | Data governance | Great Expectations 0.18 |
 | Visualisation | Streamlit + Plotly |
-| RAG / LLM | Milvus similarity search + Groq (llama3-8b-8192, optional) |
+| RAG / LLM | Milvus similarity search + Groq (llama-3.3-70b-versatile, optional) |
 | Orchestration | Apache Airflow 2.8.1 |
 | Containerization | Docker Compose |
 
