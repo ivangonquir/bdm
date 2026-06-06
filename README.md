@@ -1,12 +1,25 @@
 # Climate Lakehouse — BDM Project (P1 + P2)
 
-A full Big Data Architecture for climate data, built across two project phases. The pipeline covers ingestion, landing, trusted, and exploitation zones, orchestrated with Airflow and containerized with Docker.
+A full Big Data Architecture for climate data, built across two project phases. The pipeline covers ingestion, trusted zone cleaning, exploitation zone curation, data governance, and interactive data consumption — orchestrated with Airflow and containerized with Docker.
 
 ---
 
-### P1 — Landing Zone
+## Project Status
 
-Full ingestion pipeline that fetches data from four sources and stores it in MinIO and Delta Lake:
+| Constraint | Deliverable | Status |
+|---|---|---|
+| Landing Zone | Ingestion pipeline (NOAA, OpenWeather, ElTiempo, Satellite) | Done |
+| Trusted Zone | Cleaning + validation into ClickHouse / MongoDB / MinIO | Done |
+| Exploitation Zone | Unified table, KPIs, curated docs, embeddings | Done |
+| Data Consumption | Streamlit dashboard + RAG chatbot | Done |
+| Data Governance | Great Expectations quality validation | Done |
+| Architecture Diagram | For the report | Pending |
+
+---
+
+## P1 — Landing Zone
+
+Ingestion scripts that fetch raw data from four sources and store it in MinIO and Delta Lake.
 
 | Script | Description |
 |---|---|
@@ -18,45 +31,24 @@ Full ingestion pipeline that fetches data from four sources and stores it in Min
 | `ingestion/consume-weather-kafka.py` | Consumes Kafka topic, appends records to Delta Lake |
 | `ingestion/delta_utils.py` | Shared helpers for MinIO (boto3) and Delta Lake (delta-rs) |
 
-**Infrastructure (docker-compose.yml):**
-
-| Service | Purpose | Port |
-|---|---|---|
-| Zookeeper | Kafka coordination | — |
-| Kafka | Weather event streaming | 9092 |
-| MinIO | Object storage (landing zone) | 9000, 9001 |
-| Postgres | Airflow metadata DB | — |
-| airflow-init | DB migration + admin user creation | — |
-| airflow-webserver | DAG management UI | 8081 |
-| airflow-scheduler | DAG execution engine | — |
-
 ---
 
-### P2 — Trusted Zone
+## P2 — Trusted Zone
 
-Cleaning scripts that read from the Delta Lake landing zone and write validated data to specialized databases.
+Cleaning scripts that read from the landing zone and write validated data to specialised databases.
 
 | Script | Input | Cleaning Applied | Output |
 |---|---|---|---|
-| `trusted-zone/clean_noaa.py` | Delta `noaa_bcn` | Drop nulls, convert tenths→°C, validate range [-90,60]°C, deduplicate on (date, datatype, station) | ClickHouse `trusted.noaa_bcn` |
-| `trusted-zone/clean_openweather.py` | Delta `weather_stream` | Deduplicate on `event_ts`, validate temp [-50,60]°C and humidity [0,100]%, fill missing strings | MongoDB `trusted.weather_stream` |
-| `trusted-zone/clean_eltiempo.py` | MinIO `landing-zone/unstructured/eltiempo/` | Check min size (100 bytes), validate `<html>` tag, re-encode as UTF-8 | MinIO `trusted-zone/unstructured/eltiempo/` |
-| `trusted-zone/clean_satellite.py` | MinIO `landing-zone/unstructured/satellite/` | Validate PNG magic bytes, check min size (1 KB) | MinIO `trusted-zone/unstructured/satellite/` |
-
-**New services added (docker-compose.yml):**
-
-| Service | Purpose | Port |
-|---|---|---|
-| ClickHouse | Columnar OLAP database for structured data | 8123 |
-| MongoDB | Document store for semi-structured data | 27017 |
-| etcd | Required by Milvus | 2379 |
-| Milvus | Vector database for embeddings | 19530 |
+| `trusted-zone/clean_noaa.py` | Delta `noaa_bcn` | Drop nulls, convert tenths→°C, validate range [−90, 60] °C, deduplicate | ClickHouse `trusted.noaa_bcn` |
+| `trusted-zone/clean_openweather.py` | Delta `weather_stream` | Deduplicate on `event_ts`, validate temp and humidity ranges | MongoDB `trusted.weather_stream` |
+| `trusted-zone/clean_eltiempo.py` | MinIO `landing-zone/unstructured/eltiempo/` | Validate HTML, re-encode UTF-8 | MinIO `trusted-zone/unstructured/eltiempo/` |
+| `trusted-zone/clean_satellite.py` | MinIO `landing-zone/unstructured/satellite/` | Validate PNG magic bytes, check min size | MinIO `trusted-zone/unstructured/satellite/` |
 
 ---
 
-### P2 — Exploitation Zone
+## P2 — Exploitation Zone
 
-Curation scripts that read from the Trusted Zone, join/enrich data, and produce analytics-ready assets.
+Curation scripts that read from the Trusted Zone and produce analytics-ready assets.
 
 | Script | Input | What It Does | Output |
 |---|---|---|---|
@@ -64,17 +56,52 @@ Curation scripts that read from the Trusted Zone, join/enrich data, and produce 
 | `exploitation-zone/compute_kpis.py` | ClickHouse `exploitation.temperature_unified` | Pre-computes monthly and seasonal avg/min/max KPIs | ClickHouse `exploitation.temperature_kpis` |
 | `exploitation-zone/curate_weather.py` | MongoDB `trusted.weather_stream` | Derives `season`, `comfort_index`, `is_extreme` fields | MongoDB `exploitation.weather_curated` |
 | `exploitation-zone/organize_unstructured.py` | MinIO `trusted-zone/unstructured/` | Server-side copy to exploitation bucket | MinIO `exploitation-zone/unstructured/` |
-| `exploitation-zone/compute_embeddings.py` | MinIO `exploitation-zone/unstructured/eltiempo/` | Extracts HTML text, generates 384-dim embeddings (FastEmbed / BAAI/bge-small-en-v1.5) | Milvus `eltiempo_embeddings` |
+| `exploitation-zone/compute_embeddings.py` | MinIO `exploitation-zone/unstructured/eltiempo/` | Extracts HTML text, generates 384-dim embeddings (FastEmbed) | Milvus `eltiempo_embeddings` |
 
 ---
 
-### Orchestration (DAG)
+## P2 — Data Governance
+
+Quality validation runs after all cleaning steps and before exploitation. Results are persisted in MongoDB for audit trails.
+
+| Script | What It Validates | On Failure |
+|---|---|---|
+| `governance/validate_quality.py` | NOAA: nulls, temperature range, valid datatypes · OpenWeather: nulls, temp/humidity ranges, unique timestamps | Exits with code 1 — Airflow marks the task failed and blocks downstream exploitation tasks |
+
+Validation reports are stored in MongoDB `governance.quality_results` with per-expectation detail (expectation type, column, pass/fail, result values).
+
+---
+
+## P2 — Data Consumption
+
+A Streamlit dashboard at [http://localhost:8501](http://localhost:8501) with two pages:
+
+**Page 1 — Climate Dashboard**
+Reads from ClickHouse `exploitation.temperature_kpis` and displays:
+- Seasonal KPI cards (avg, min, max per season)
+- Annual temperature trend with min/max band (1924–present)
+- Average monthly profile bar chart
+- Seasonal averages bar chart
+- Month × Year temperature heatmap
+- Year range slider to filter all charts
+
+**Page 2 — Climate Q&A (RAG)**
+Semantic search over ElTiempo forecast pages powered by Milvus:
+- User types a natural-language weather question
+- FastEmbed embeds the query (same model used at ingestion time)
+- Milvus returns the top-3 most similar ElTiempo passages
+- Each passage is shown with its filename and similarity score
+- If `GROQ_API_KEY` is set, Groq (`llama3-8b-8192`) generates a prose answer grounded in those passages
+
+---
+
+## Orchestration (DAG)
 
 The Airflow DAG `climate_pipeline` covers the full pipeline end-to-end:
 
 ```
 fetch_noaa ──► convert_noaa_to_delta ──► clean_noaa ──┐
-                                                        ├──► build_temperature_unified ──► compute_kpis
+                                                        ├──► validate_quality ──► build_temperature_unified ──► compute_kpis
 fetch_openweather ──► consume_weather_kafka ──► clean_openweather ──┘
                                                     └──► curate_weather
 
@@ -85,86 +112,28 @@ fetch_satellite ──► clean_satellite ─┘
 
 ---
 
-## What Still Needs to Be Done
+## Infrastructure
 
-### 1. Data Consumption (Required — Constraint 5)
-
-Nothing consumes the data in the Exploitation Zone yet. At least one downstream task must be implemented. The natural candidates given the existing data are:
-
-- **Streamlit dashboard** — visualise the temperature KPIs from `exploitation.temperature_kpis` (avg/min/max per month and season, historical trends from 1924 to present)
-- **RAG chatbot** — use the Milvus embeddings of ElTiempo forecasts to answer natural-language weather queries
-- **Alert system** — trigger alerts when `exploitation.weather_curated` contains `is_extreme = True` readings
-
-The requirement is that something reads from the Exploitation Zone and produces a result. A minimal but functional implementation is sufficient.
-
-### 2. Architecture Diagram (Required — Constraint 6)
-
-An updated architecture diagram showing all zones, tools, data flows, and new services (ClickHouse, MongoDB, Milvus) must be produced for the report.
-
-### 3. Data Governance (Optional — contributes to grade)
-
-At least one governance mechanism implemented over the architecture:
-
-- **Data quality validation** — e.g. Great Expectations checks after each cleaning step
-- **Lineage tracking** — trace how data moves from NOAA → Delta → ClickHouse → KPIs
-- **Data catalog** — describe data products in the Exploitation Zone using DCAT
-- **Access control** — define roles per zone (e.g. raw data restricted to engineers, curated data open to analysts)
-
-### 4. Known Bugs to Fix (before final submission)
-
-| File | Issue |
-|---|---|
-| `trusted-zone/clean_openweather.py:68` | Numpy scalar conversion creates a new dict but never writes it back to `records` — the conversion is a no-op |
-| `trusted-zone/clean_eltiempo.py:28` | `list_objects_v2` returns max 1000 objects with no pagination — files beyond 1000 are silently dropped |
-| `trusted-zone/clean_satellite.py:28` | Same pagination issue |
-| `exploitation-zone/organize_unstructured.py:28` | Same pagination issue |
-
----
-
-## Folder Structure
-
-```
-climate-lakehouse/
-│
-├── airflow/
-│   ├── Dockerfile                        # Pre-installs all Python deps (avoids runtime pip)
-│   └── dags/
-│       └── ingestion-dag.py             # Full end-to-end Airflow DAG
-│
-├── ingestion/                            # Landing zone scripts
-│   ├── delta_utils.py
-│   ├── fetch-noaa-csv.py
-│   ├── fetch-openweather.py
-│   ├── fetch-eltiempo.py
-│   ├── fetch-satellite.py
-│   ├── convert-to-delta.py
-│   └── consume-weather-kafka.py
-│
-├── trusted-zone/                         # Cleaning scripts (Landing → Trusted)
-│   ├── clean_noaa.py
-│   ├── clean_openweather.py
-│   ├── clean_eltiempo.py
-│   └── clean_satellite.py
-│
-├── exploitation-zone/                    # Curation scripts (Trusted → Exploitation)
-│   ├── build_temperature_unified.py
-│   ├── compute_kpis.py
-│   ├── curate_weather.py
-│   ├── organize_unstructured.py
-│   └── compute_embeddings.py
-│
-├── landing-zone/                         # Local staging (not committed)
-├── .env                                  # API keys — never commit
-├── docker-compose.yml
-├── requirements.txt
-└── README.md
-```
+| Service | Purpose | Port |
+|---|---|---|
+| Zookeeper | Kafka coordination | — |
+| Kafka | Weather event streaming | 9092 |
+| MinIO | Object storage (all zones) | 9000 (API), 9001 (UI) |
+| ClickHouse | Columnar OLAP store (structured data) | 8123 |
+| MongoDB | Document store (semi-structured + governance) | 27017 |
+| etcd | Required by Milvus | — |
+| Milvus | Vector store (embeddings) | 19530 |
+| Streamlit | Dashboard + RAG chatbot | 8501 |
+| Postgres | Airflow metadata DB | — |
+| airflow-init | DB migration + admin user creation | — |
+| airflow-webserver | DAG management UI | 8081 |
+| airflow-scheduler | DAG execution engine | — |
 
 ---
 
 ## Setup Instructions
 
-### 1. Configure API Keys
+### 1. Configure API keys
 
 Create a `.env` file in the project root:
 
@@ -172,17 +141,32 @@ Create a `.env` file in the project root:
 OPENWEATHER_KEY=your_openweather_api_key
 NOAA_TOKEN=your_noaa_api_token
 AIRFLOW__WEBSERVER__SECRET_KEY=any_random_string
+
+# Optional — enables AI-generated answers in the Climate Q&A page
+GROQ_API_KEY=your_groq_api_key
 ```
 
 > `AIRFLOW__WEBSERVER__SECRET_KEY` must be set and identical across all Airflow containers. Without it each container generates a different key, causing 403 errors in the task log UI.
 
-### 2. Start all services
+> A free Groq API key can be obtained at [console.groq.com](https://console.groq.com). Without it the Q&A page works in retrieval-only mode.
+
+### 2. Build and start all services
+
+On first run, or after any Dockerfile change:
 
 ```bash
+docker compose build
 docker compose up -d
 ```
 
-Allow ~2 minutes on first boot for `airflow-init` to finish.
+Allow ~2 minutes on first boot for `airflow-init` to finish and Milvus to become healthy.
+
+To rebuild only one service (e.g. after changing the dashboard):
+
+```bash
+docker compose build streamlit
+docker compose up -d streamlit
+```
 
 ### 3. Create the Kafka topic
 
@@ -208,9 +192,10 @@ Expected run time: ~5–8 minutes on first run. Subsequent runs are faster (NOAA
 |---|---|---|
 | Airflow | http://localhost:8081 | admin / admin |
 | MinIO | http://localhost:9001 | minioadmin / minioadmin |
+| Streamlit dashboard | http://localhost:8501 | — |
 | ClickHouse | http://localhost:8123 | no auth |
-| MongoDB | http://localhost:27017 | no auth |
-| Milvus | http://localhost:19530 | no auth |
+| MongoDB | localhost:27017 | no auth |
+| Milvus | localhost:19530 | no auth |
 
 ### 6. Stop services
 
@@ -222,6 +207,53 @@ Full reset (removes all stored data):
 
 ```bash
 docker compose down -v
+```
+
+---
+
+## Folder Structure
+
+```
+climate-lakehouse/
+│
+├── airflow/
+│   ├── Dockerfile                       # Installs all Python deps + pre-downloads FastEmbed model
+│   └── dags/
+│       └── ingestion-dag.py             # Full end-to-end Airflow DAG
+│
+├── ingestion/                           # Landing zone scripts
+│   ├── delta_utils.py
+│   ├── fetch-noaa-csv.py
+│   ├── fetch-openweather.py
+│   ├── fetch-eltiempo.py
+│   ├── fetch-satellite.py
+│   ├── convert-to-delta.py
+│   └── consume-weather-kafka.py
+│
+├── trusted-zone/                        # Cleaning scripts (Landing → Trusted)
+│   ├── clean_noaa.py
+│   ├── clean_openweather.py
+│   ├── clean_eltiempo.py
+│   └── clean_satellite.py
+│
+├── exploitation-zone/                   # Curation scripts (Trusted → Exploitation)
+│   ├── build_temperature_unified.py
+│   ├── compute_kpis.py
+│   ├── curate_weather.py
+│   ├── organize_unstructured.py
+│   └── compute_embeddings.py
+│
+├── governance/                          # Data quality validation
+│   └── validate_quality.py
+│
+├── consumption/                         # Streamlit dashboard + RAG chatbot
+│   ├── dashboard.py
+│   └── Dockerfile
+│
+├── landing-zone/                        # Local staging (not committed)
+├── .env                                 # API keys — never commit
+├── docker-compose.yml
+└── README.md
 ```
 
 ---
@@ -238,6 +270,9 @@ docker compose down -v
 | Document store | MongoDB |
 | Vector store | Milvus |
 | Embeddings | FastEmbed (BAAI/bge-small-en-v1.5, ONNX, CPU) |
+| Data governance | Great Expectations 0.18 |
+| Visualisation | Streamlit + Plotly |
+| RAG / LLM | Milvus similarity search + Groq (llama3-8b-8192, optional) |
 | Orchestration | Apache Airflow 2.8.1 |
 | Containerization | Docker Compose |
 

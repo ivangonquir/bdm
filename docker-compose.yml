@@ -122,16 +122,55 @@ services:
       timeout: 20s
       retries: 3
 
+  # ---------------- SPARK ----------------
+  spark-master:
+    build:
+      context: .
+      dockerfile: docker/spark.Dockerfile
+    container_name: spark-master
+    entrypoint: /opt/spark/sbin/start-master.sh
+    environment:
+      SPARK_MASTER_HOST: spark-master
+      SPARK_NO_DAEMONIZE: "true"
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  spark-worker:
+    build:
+      context: .
+      dockerfile: docker/spark.Dockerfile
+    container_name: spark-worker
+    entrypoint: /opt/spark/sbin/start-worker.sh
+    command: ["spark://spark-master:7077"]
+    environment:
+      SPARK_WORKER_MEMORY: 2g
+      SPARK_WORKER_CORES: "2"
+      SPARK_NO_DAEMONIZE: "true"
+      PYSPARK_PYTHON: python3.11
+    depends_on:
+      spark-master:
+        condition: service_healthy
+
   # ---------------- STREAMLIT DASHBOARD ----------------
   streamlit:
     build: ./consumption
     container_name: streamlit
     ports:
       - "8501:8501"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
     volumes:
       - ./consumption:/app
     depends_on:
       clickhouse:
+        condition: service_healthy
+      milvus:
         condition: service_healthy
 
   # ---------------- AIRFLOW ----------------
@@ -175,6 +214,8 @@ services:
       clickhouse:
         condition: service_healthy
       mongodb:
+        condition: service_healthy
+      spark-master:
         condition: service_healthy
     ports:
       - "8081:8080"
