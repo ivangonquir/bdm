@@ -41,6 +41,7 @@ spark = (
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
     .config("spark.hadoop.fs.s3a.impl",
             "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    .config("spark.pyspark.python", "python3.11")
     .config("spark.executorEnv.PYSPARK_PYTHON", "python3.11")
     .getOrCreate()
 )
