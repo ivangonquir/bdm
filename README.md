@@ -121,6 +121,8 @@ fetch_satellite ──► clean_satellite ─┘
 | MinIO | Object storage (all zones) | 9000 (API), 9001 (UI) |
 | ClickHouse | Columnar OLAP store (structured data) | 8123 |
 | MongoDB | Document store (semi-structured + governance) | 27017 |
+| spark-master | Spark cluster master | 7077, 8080 (UI) |
+| spark-worker | Spark executor node | — |
 | etcd | Required by Milvus | — |
 | Milvus | Vector store (embeddings) | 19530 |
 | Streamlit | Dashboard + RAG chatbot | 8501 |
@@ -168,10 +170,17 @@ docker compose build streamlit
 docker compose up -d streamlit
 ```
 
+> **Troubleshooting — Python version mismatch on Spark workers**
+> If Airflow tasks that use Spark fail with `[PYTHON_VERSION_MISMATCH] Python in worker has different version (3, 10) than that in driver 3.11`, rebuild the Spark images without cache to ensure Python 3.11 is properly installed:
+> ```bash
+> docker compose build --no-cache spark-master spark-worker
+> docker compose up -d
+> ```
+
 ### 3. Create the Kafka topic
 
 ```bash
-docker exec -it climate-lakehouse-kafka-1 kafka-topics --create \
+docker compose exec kafka kafka-topics --create \
   --topic weather-stream \
   --bootstrap-server localhost:9092 \
   --partitions 1 \
@@ -191,6 +200,7 @@ Expected run time: ~5–8 minutes on first run. Subsequent runs are faster (NOAA
 | Service | URL | Credentials |
 |---|---|---|
 | Airflow | http://localhost:8081 | admin / admin |
+| Spark UI | http://localhost:8080 | — |
 | MinIO | http://localhost:9001 | minioadmin / minioadmin |
 | Streamlit dashboard | http://localhost:8501 | — |
 | ClickHouse | http://localhost:8123 | no auth |
@@ -217,9 +227,12 @@ docker compose down -v
 climate-lakehouse/
 │
 ├── airflow/
-│   ├── Dockerfile                       # Installs all Python deps + pre-downloads FastEmbed model
+│   ├── Dockerfile                       # Installs all Python deps + Java + PySpark + pre-downloads FastEmbed model
 │   └── dags/
 │       └── ingestion-dag.py             # Full end-to-end Airflow DAG
+│
+├── docker/
+│   └── spark.Dockerfile                 # Custom Spark image with Python 3.11 for driver/worker version alignment
 │
 ├── ingestion/                           # Landing zone scripts
 │   ├── delta_utils.py
@@ -263,7 +276,8 @@ climate-lakehouse/
 | Concern | Technology |
 |---|---|
 | Object storage | MinIO (S3-compatible) |
-| Open Table Format | Delta Lake via delta-rs (no JVM) |
+| Open Table Format | Delta Lake via delta-spark 3.2.1 |
+| Distributed processing | Apache Spark 3.5.3 (PySpark, standalone cluster) |
 | Query engine (ingestion) | DuckDB |
 | Streaming | Apache Kafka |
 | Structured store | ClickHouse (columnar OLAP) |
