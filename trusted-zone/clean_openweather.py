@@ -61,6 +61,7 @@ if df.count() == 0:
     spark.stop()
     sys.exit(0)
 
+raw_count = df.count()
 print(f"Read {df.count():,} records from Delta landing zone")
 
 # ── 1. Deduplicate on event timestamp ────────────────────────────────────────
@@ -106,6 +107,7 @@ df = (df
     .withColumn("weather_desc", F.coalesce(F.col("weather_desc"), F.lit("")))
 )
 
+total = df.count()
 print(f"Final clean record count: {df.count():,}")
 
 # ── Convert to MongoDB-safe dicts ────────────────────────────────────────────
@@ -127,5 +129,19 @@ if records:
     collection.insert_many(records)
 print(f"[MongoDB] Wrote {len(records)} documents → trusted.weather_stream")
 client.close()
+
+import sys
+sys.path.insert(0, "/opt/airflow/governance")
+from lineage_utils import log_lineage
+
+log_lineage(
+    task_id     = "clean_openweather",
+    source      = {"zone": "landing",  "store": "minio/json",
+                   "table": "semi-structured/openweathermap/*.json"},
+    destination = {"zone": "trusted",  "store": "mongodb",
+                   "table": "trusted.weather_stream"},
+    rows_in     = raw_count,
+    rows_out    = total,
+)
 
 spark.stop()

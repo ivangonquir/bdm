@@ -59,18 +59,66 @@ Curation scripts that read from the Trusted Zone and produce analytics-ready ass
 | `exploitation-zone/compute_embeddings.py` | MinIO `exploitation-zone/unstructured/eltiempo/` | Extracts HTML text, generates 384-dim embeddings (FastEmbed) | Milvus `eltiempo_embeddings` |
 
 ---
-
+ 
 ## P2 — Data Governance
-
+ 
+### Data Quality Validation
+ 
 Quality validation runs after all cleaning steps and before exploitation. Results are persisted in MongoDB for audit trails.
-
+ 
 | Script | What It Validates | On Failure |
 |---|---|---|
-| `governance/validate_quality.py` | NOAA: nulls, temperature range, valid datatypes · OpenWeather: nulls, temp/humidity ranges, unique timestamps | Exits with code 1 — Airflow marks the task failed and blocks downstream exploitation tasks |
-
+| `governance/validate_quality.py` | NOAA: nulls, temperature range, valid datatypes · OpenWeather: nulls, temp/humidity ranges, unique timestamps · `exploitation.temperature_unified`: source/datatype values, temp range · `exploitation.temperature_kpis`: granularity values, min ≤ avg ≤ max consistency | Exits with code 1 — Airflow marks the task failed and blocks downstream exploitation tasks |
+ 
 Validation reports are stored in MongoDB `governance.quality_results` with per-expectation detail (expectation type, column, pass/fail, result values).
-
----
+ 
+### Lineage Tracking
+ 
+Every pipeline script records a lineage document in MongoDB `governance.lineage` at the end of its execution. Each document captures the full data movement for that run:
+ 
+| Field | Description |
+|---|---|
+| `task_id` | Name of the Airflow task / script |
+| `run_ts` | UTC timestamp of the run |
+| `source` | Zone, store, and table/path data was read from |
+| `destination` | Zone, store, and table/path data was written to |
+| `rows_in` | Number of records read from the source |
+| `rows_out` | Number of records written to the destination |
+| `status` | `success` or `failed` |
+| `error` | Error message if status is `failed` |
+ 
+The lineage chain across the full pipeline is:
+ 
+```
+minio/csv (noaa)              → clean_noaa              → clickhouse trusted.noaa_bcn
+minio/json (openweathermap)   → clean_openweather        → mongodb trusted.weather_stream
+trusted.noaa_bcn
+  + trusted.weather_stream    → build_temperature_unified → exploitation.temperature_unified
+exploitation.temperature_unified → compute_kpis          → exploitation.temperature_kpis
+trusted.weather_stream        → curate_weather            → exploitation.weather_curated
+```
+ 
+To inspect lineage records:
+ 
+```bash
+docker compose exec mongodb mongosh
+```
+ 
+```javascript
+use governance
+ 
+// Full lineage history
+db.lineage.find().pretty()
+ 
+// Rows dropped per task (data quality proxy)
+db.lineage.find({}, { task_id: 1, rows_in: 1, rows_out: 1, run_ts: 1 }).pretty()
+ 
+// Failed runs only
+db.lineage.find({ status: "failed" }).pretty()
+ 
+// History of a single task
+db.lineage.find({ task_id: "clean_noaa" }).sort({ run_ts: -1 }).pretty()
+```
 
 ## P2 — Data Consumption
 
@@ -256,8 +304,9 @@ climate-lakehouse/
 │   ├── organize_unstructured.py
 │   └── compute_embeddings.py
 │
-├── governance/                          # Data quality validation
-│   └── validate_quality.py
+├── governance/                          # Data governance scripts
+│   ├── lineage_utils.py                 # Shared utility — logs lineage to MongoDB governance.lineage
+│   ├── validate_quality.py              # Great Expectations validation (trusted + exploitation zones)
 │
 ├── consumption/                         # Streamlit dashboard + RAG chatbot
 │   ├── dashboard.py

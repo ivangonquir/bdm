@@ -47,6 +47,7 @@ print("=== NOAA Trusted Zone Cleaning (Spark) ===")
 
 # ── Read from Delta (MinIO) ──────────────────────────────────────────────────
 df = spark.read.format("delta").load("s3a://delta/noaa_bcn")
+raw_count = df.count()
 print(f"Read {df.count():,} records from Delta landing zone")
 
 # ── 1. Drop null date / value ────────────────────────────────────────────────
@@ -138,5 +139,17 @@ ch.insert_df(
          "m_flag", "q_flag", "s_flag", "is_inconsistent"]],
 )
 print(f"[ClickHouse] Wrote {len(pdf):,} rows → trusted.noaa_bcn")
+
+import sys
+sys.path.insert(0, "/opt/airflow/governance")
+from lineage_utils import log_lineage
+ 
+log_lineage(
+    task_id     = "clean_noaa",
+    source      = {"zone": "landing",  "store": "minio/csv", "table": "structured/noaa/*.csv"},
+    destination = {"zone": "trusted",  "store": "clickhouse", "table": "trusted.noaa_bcn"},
+    rows_in     = raw_count,
+    rows_out    = final_count,
+)
 
 spark.stop()
