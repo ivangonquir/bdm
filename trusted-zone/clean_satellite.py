@@ -68,9 +68,10 @@ for key in files:
             invalid += 1
             continue
 
-        # Convert RGBA → RGB (drop alpha channel)
+        converted = False
         if img.mode == "RGBA":
             img = img.convert("RGB")
+            converted = True
             print(f"[INFO] {key} — converted RGBA to RGB")
         elif img.mode != "RGB":
             print(f"[SKIP] {key} — unexpected mode {img.mode}")
@@ -85,19 +86,13 @@ for key in files:
         mean_b   = float(arr[:, :, 2].mean())
         print(f"[INFO] {key} — mean RGB: ({mean_r:.1f}, {mean_g:.1f}, {mean_b:.1f})")
 
-        # Re-encode to bytes if RGBA was converted to RGB
-        if img.mode == "RGB" and content[:4] != b"\x89PNG":
+        # ── Persist converted bytes only if we actually re-encoded ────────────
+        if converted:
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             content = buf.getvalue()
 
-        # ── Copy to trusted zone ──────────────────────────────────────────────
-        s3.put_object(
-            Bucket=BUCKET_TRUSTED,
-            Key=key,
-            Body=content,
-            ContentType="image/png",
-        )
+        s3.put_object(Bucket=BUCKET_TRUSTED, Key=key, Body=content, ContentType="image/png")
         valid += 1
 
     except Exception as exc:
