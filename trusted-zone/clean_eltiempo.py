@@ -102,7 +102,7 @@ for key in files:
         clean_text = clean_text.replace("°", "")
 
         # ── Re-encode as clean UTF-8 ──────────────────────────────────────────
-        clean_bytes = str(soup).encode("utf-8")
+        clean_bytes = clean_text.encode("utf-8")
 
         s3.put_object(
             Bucket=BUCKET_TRUSTED,
