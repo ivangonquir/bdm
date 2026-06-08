@@ -19,20 +19,6 @@ Click on the image to watch a demo of the dashboard.
 
 [![Watch the demo](assets/streamlit_dashboard.png)](https://youtu.be/2U5NCktmeUA)
 
-
----
-
-## Project Status
-
-| Constraint | Deliverable | Status |
-|---|---|---|
-| Landing Zone | Ingestion pipeline (NOAA, OpenWeather, ElTiempo, Satellite) | Done |
-| Trusted Zone | Cleaning + validation into ClickHouse / MongoDB / MinIO | Done |
-| Exploitation Zone | Unified table, KPIs, curated docs, embeddings | Done |
-| Data Consumption | Streamlit dashboard + RAG chatbot | Done |
-| Data Governance | Great Expectations quality validation | Done |
-| Architecture Diagram | `assets/architecture.png` | Pending |
-
 ---
 
 ## P1 — Landing Zone
@@ -57,7 +43,7 @@ Cleaning scripts that read from the landing zone and write validated data to spe
 
 | Script | Input | Cleaning Applied | Output |
 |---|---|---|---|
-| `trusted-zone/clean_noaa.py` | Delta `noaa_bcn` | Drop nulls, convert tenths→°C, validate range [−90, 60] °C, deduplicate | ClickHouse `trusted.noaa_bcn` |
+| `trusted-zone/clean_noaa.py` | Delta `noaa_bcn` | Drop nulls, validate range [−15, 45] °C, deduplicate, flag inconsistencies | ClickHouse `trusted.noaa_bcn` |
 | `trusted-zone/clean_openweather.py` | Delta `weather_stream` | Deduplicate on `event_ts`, validate temp and humidity ranges | MongoDB `trusted.weather_stream` |
 | `trusted-zone/clean_eltiempo.py` | MinIO `landing-zone/unstructured/eltiempo/` | Validate HTML, re-encode UTF-8 | MinIO `trusted-zone/unstructured/eltiempo/` |
 | `trusted-zone/clean_satellite.py` | MinIO `landing-zone/unstructured/satellite/` | Validate PNG magic bytes, check min size | MinIO `trusted-zone/unstructured/satellite/` |
@@ -74,7 +60,7 @@ Curation scripts that read from the Trusted Zone and produce analytics-ready ass
 | `exploitation-zone/compute_kpis.py` | ClickHouse `exploitation.temperature_unified` | Pre-computes monthly and seasonal avg/min/max KPIs | ClickHouse `exploitation.temperature_kpis` |
 | `exploitation-zone/curate_weather.py` | MongoDB `trusted.weather_stream` | Derives `season`, `comfort_index`, `is_extreme` fields | MongoDB `exploitation.weather_curated` |
 | `exploitation-zone/organize_unstructured.py` | MinIO `trusted-zone/unstructured/` | Server-side copy to exploitation bucket | MinIO `exploitation-zone/unstructured/` |
-| `exploitation-zone/compute_embeddings.py` | MinIO `exploitation-zone/unstructured/eltiempo/` | Extracts HTML text, generates 384-dim embeddings (FastEmbed) | Milvus `eltiempo_embeddings` |
+| `exploitation-zone/compute_embeddings.py` | MinIO `exploitation-zone/unstructured/eltiempo/` | Generates 384-dimensional FastEmbed embeddings from the normalised text snapshots and stores them in Milvus | Milvus `eltiempo_embeddings` |
 
 ---
  
@@ -324,7 +310,7 @@ climate-lakehouse/
 │
 ├── governance/                          # Data governance scripts
 │   ├── lineage_utils.py                 # Shared utility — logs lineage to MongoDB governance.lineage
-│   ├── validate_quality.py              # Great Expectations validation (trusted + exploitation zones)
+│   └── validate_quality.py              # Great Expectations validation (trusted + exploitation zones)
 │
 ├── consumption/                         # Streamlit dashboard + RAG chatbot
 │   ├── dashboard.py
@@ -352,6 +338,7 @@ climate-lakehouse/
 | Vector store | Milvus |
 | Embeddings | FastEmbed (BAAI/bge-small-en-v1.5, ONNX, CPU) |
 | Data governance | Great Expectations 0.18 |
+| Lineage tracking | Custom MongoDB-backed utility |
 | Visualisation | Streamlit + Plotly |
 | RAG / LLM | Milvus similarity search + Groq (llama-3.3-70b-versatile, optional) |
 | Orchestration | Apache Airflow 2.8.1 |
