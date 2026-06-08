@@ -56,7 +56,7 @@ Curation scripts that read from the Trusted Zone and produce analytics-ready ass
 
 | Script | Input | What It Does | Output |
 |---|---|---|---|
-| `exploitation-zone/build_temperature_unified.py` | ClickHouse `trusted.noaa_bcn` + MongoDB `trusted.weather_stream` | Joins NOAA + OpenWeather into one denormalised table | ClickHouse `exploitation.temperature_unified` |
+| `exploitation-zone/build_temperature_unified.py` | ClickHouse `trusted.noaa_bcn` + MongoDB `trusted.weather_stream` | Concatenates NOAA + OpenWeather into one denormalised table | ClickHouse `exploitation.temperature_unified` |
 | `exploitation-zone/compute_kpis.py` | ClickHouse `exploitation.temperature_unified` | Pre-computes monthly and seasonal avg/min/max KPIs | ClickHouse `exploitation.temperature_kpis` |
 | `exploitation-zone/curate_weather.py` | MongoDB `trusted.weather_stream` | Derives `season`, `comfort_index`, `is_extreme` fields | MongoDB `exploitation.weather_curated` |
 | `exploitation-zone/organize_unstructured.py` | MinIO `trusted-zone/unstructured/` | Server-side copy to exploitation bucket | MinIO `exploitation-zone/unstructured/` |
@@ -72,13 +72,13 @@ Quality validation runs after all cleaning steps and before exploitation. Result
  
 | Script | What It Validates | On Failure |
 |---|---|---|
-| `governance/validate_quality.py` | NOAA: nulls, temperature range, valid datatypes · OpenWeather: nulls, temp/humidity ranges, unique timestamps · `exploitation.temperature_unified`: source/datatype values, temp range · `exploitation.temperature_kpis`: granularity values, min ≤ avg ≤ max consistency | Exits with code 1 — Airflow marks the task failed and blocks downstream exploitation tasks |
+| `governance/validate_quality.py` | NOAA: nulls, temperature range, valid datatypes · OpenWeather: nulls, temp/humidity ranges, unique timestamps |
  
 Validation reports are stored in MongoDB `governance.quality_results` with per-expectation detail (expectation type, column, pass/fail, result values).
  
 ### Lineage Tracking
  
-Every pipeline script records a lineage document in MongoDB `governance.lineage` at the end of its execution. Each document captures the full data movement for that run:
+The five scripts below record a lineage document in MongoDB `governance.lineage` at the end of its execution. Each document captures the full data movement for that run:
  
 | Field | Description |
 |---|---|
