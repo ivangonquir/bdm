@@ -1,6 +1,6 @@
 # ---- Secrets ----
 .env
-.env.example
+# .env.example
 
 # ---- Python ----
 .venv/
